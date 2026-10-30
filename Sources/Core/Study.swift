@@ -24,7 +24,7 @@ public struct Study: Identifiable, Codable {
         name_history.append(NameChange(wall_ms: at, before: actions, after: clean)); actions = clean
     }
 }
-public struct Assignment: Codable, Equatable {
+public struct Assignment: Codable, Equatable, Sendable {
     public let study_id: String, action: Int, slot: Int, slot_attempt: Int, record_number: Int
     public init(study: String, action: Int, slot: Int, attempt: Int) throws {
         guard study.range(of:"^[A-Za-z0-9_-]{1,80}$",options:.regularExpression) != nil, (0..<8).contains(action), (1...15).contains(slot), attempt > 0 else { throw LabError.invalid("无效固定编号") }
@@ -37,11 +37,11 @@ public struct Assignment: Codable, Equatable {
         guard try c.decode(Int.self, forKey: .record_number) == record_number else { throw LabError.invalid("固定编号与动作不匹配") }
     }
 }
-public struct Review: Codable {
+public struct Review: Codable, Sendable {
     public var revision: Int, wall_ms: Int64, decision: String, reason: String
     public init(revision: Int, at: Int64, decision: String, reason: String) { self.revision = revision; wall_ms = at; self.decision = decision; self.reason = reason }
 }
-public struct Trial: Codable, Identifiable {
+public struct Trial: Codable, Identifiable, Sendable {
     public var id: String, assignment: Assignment?, diagnostic: Bool, qualityPassed: Bool, normalCompletion: Bool, status: String
     public var reviews: [Review]
     public init(id: String, assignment: Assignment?, diagnostic: Bool, quality: Bool, normal: Bool, status: String, reviews: [Review] = []) {

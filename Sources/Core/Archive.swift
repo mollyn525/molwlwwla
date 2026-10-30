@@ -1,7 +1,8 @@
 import Foundation
 import CryptoKit
 
-public final class ExportCancellation {
+// The only mutable field is protected by the same lock for every read and write.
+public final class ExportCancellation: @unchecked Sendable {
     private let lock = NSLock(); private var value = false
     public init() {}
     public func cancel() { lock.lock(); value = true; lock.unlock() }
