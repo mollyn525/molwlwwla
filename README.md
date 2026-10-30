@@ -81,6 +81,12 @@ bash tools/build_macos.sh
 - 未签名IPA：`baduanjin-ios-0.1.0-unsigned.ipa`，SHA-256 `480d450d4a4f2a083778f9a045dcf06176082cab0d024b8c7f77178a381a1d39`。
 - 此处为0.1.0构建证据；后续个人签名安装、主界面和扫描已验证，单台连接失败待0.1.1修复后复测。正式录制、佩戴、配置写入、校准、十五台连接及每项30Hz均没有iOS验收结论。
 
+## 2026-10-30 0.1.1修复构建
+
+- [Actions运行41037313402](https://github.com/mollyn525/molwlwwla/actions/runs/41037313402)通过，对应提交`0ca22114545edf2ec09e3c5d176f843033cdbb80`。
+- Xcode26.0.1：9项XCTest全部通过，包含维特完整UUID与标准短UUID不等价的回归验证。185组627帧生产解析对照通过，Swift导出ZIP独立校验通过；模拟器和iPhone ARM64编译成功，Swift源码告警0。
+- IPA：`baduanjin-ios-0.1.1-unsigned.ipa`，SHA-256 `79372ff2d747cf6a82e861c3bac86b93b586c1910fcdba8a5d473dc7305565ed`。真机更新安装与单台订阅结果另行记录，云测试不代表真实蓝牙已通过。
+
 ## 官方依据
 
 - [Apple：Personal Team与7天配置文件](https://developer.apple.com/help/account/basics/about-your-developer-account)
