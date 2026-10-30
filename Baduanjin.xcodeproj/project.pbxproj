@@ -1,0 +1,29 @@
+// !$*UTF8*$!
+{archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+B33BB349D53B747C2CDAF592 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/iOS/AppModel.swift"; sourceTree = SOURCE_ROOT; };
+5F9CCD099AB5306769852E1A = {isa = PBXBuildFile; fileRef = B33BB349D53B747C2CDAF592; };
+027672247EAF3C1D949A35A0 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/iOS/BaduanjinApp.swift"; sourceTree = SOURCE_ROOT; };
+BA81F7CC4258A3EE230340B6 = {isa = PBXBuildFile; fileRef = 027672247EAF3C1D949A35A0; };
+D3BECF398CEDF7EDE66A77D6 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/iOS/BluetoothEngine.swift"; sourceTree = SOURCE_ROOT; };
+43ABF4B7D8B81B0F039E492F = {isa = PBXBuildFile; fileRef = D3BECF398CEDF7EDE66A77D6; };
+3F0270A67F55090B8A548C7E = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/iOS/Views.swift"; sourceTree = SOURCE_ROOT; };
+F8822B4F786B38CDA6B7A4D8 = {isa = PBXBuildFile; fileRef = 3F0270A67F55090B8A548C7E; };
+A8792157CB4F27FB949C035F = {isa = PBXFileReference; explicitFileType = wrapper.application; path = Baduanjin.app; sourceTree = BUILT_PRODUCTS_DIR; };
+9CEEC13202AFBF12EE3ABB99 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = SOURCE_ROOT; };
+BC4A71180870F7945155FBB0 = {isa = XCLocalSwiftPackageReference; relativePath = "."; };
+0D45F5FD462B8C70BFFB1002 = {isa = XCSwiftPackageProductDependency; package = BC4A71180870F7945155FBB0; productName = BaduanjinCore; };
+91596F6079D535D734C1642A = {isa = PBXBuildFile; productRef = 0D45F5FD462B8C70BFFB1002; };
+878A52FC5FF6A57D50B7B870 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (5F9CCD099AB5306769852E1A,BA81F7CC4258A3EE230340B6,43ABF4B7D8B81B0F039E492F,F8822B4F786B38CDA6B7A4D8); runOnlyForDeploymentPostprocessing = 0; };
+E2AA269EB967A8853A258BFA = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (91596F6079D535D734C1642A); runOnlyForDeploymentPostprocessing = 0; };
+41D311A605520FC7B8B9A980 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+0A3E27B8CA818264D75C8D81 = {isa = PBXGroup; name = Products; children = (A8792157CB4F27FB949C035F); sourceTree = "<group>"; };
+0D6E4079E36703EBD37C0072 = {isa = PBXGroup; children = (B33BB349D53B747C2CDAF592,027672247EAF3C1D949A35A0,D3BECF398CEDF7EDE66A77D6,3F0270A67F55090B8A548C7E,9CEEC13202AFBF12EE3ABB99,0A3E27B8CA818264D75C8D81); sourceTree = "<group>"; };
+73EBF6644258C120893E685D = {isa = XCBuildConfiguration; name = Debug; buildSettings = {SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; SWIFT_STRICT_CONCURRENCY = targeted; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; DEBUG_INFORMATION_FORMAT = dwarf;}; };
+0B0C687DF8B6B8DC790B519C = {isa = XCBuildConfiguration; name = Release; buildSettings = {SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; SWIFT_STRICT_CONCURRENCY = targeted; SWIFT_OPTIMIZATION_LEVEL = "-O"; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";}; };
+76F8DEC3DFE0BDB465198890 = {isa = XCConfigurationList; buildConfigurations = (73EBF6644258C120893E685D,0B0C687DF8B6B8DC790B519C); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+6C7EFF6369083C8E1F2B1994 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; SWIFT_STRICT_CONCURRENCY = targeted; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; DEBUG_INFORMATION_FORMAT = dwarf;PRODUCT_NAME = Baduanjin; PRODUCT_BUNDLE_IDENTIFIER = dev.imulink.baduanjin.ios; INFOPLIST_FILE = Info.plist; GENERATE_INFOPLIST_FILE = NO; TARGETED_DEVICE_FAMILY = 1; CODE_SIGN_STYLE = Automatic; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_EMIT_LOC_STRINGS = YES; }; };
+DD75E2CB1C510A828AC72D96 = {isa = XCBuildConfiguration; name = Release; buildSettings = {SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; SWIFT_STRICT_CONCURRENCY = targeted; SWIFT_OPTIMIZATION_LEVEL = "-O"; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";PRODUCT_NAME = Baduanjin; PRODUCT_BUNDLE_IDENTIFIER = dev.imulink.baduanjin.ios; INFOPLIST_FILE = Info.plist; GENERATE_INFOPLIST_FILE = NO; TARGETED_DEVICE_FAMILY = 1; CODE_SIGN_STYLE = Automatic; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_EMIT_LOC_STRINGS = YES; }; };
+1B672BF3DA427763BF644BE3 = {isa = XCConfigurationList; buildConfigurations = (6C7EFF6369083C8E1F2B1994,DD75E2CB1C510A828AC72D96); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+A172CEDCAE47474B615C54D5 = {isa = PBXNativeTarget; name = Baduanjin; productName = Baduanjin; productType = "com.apple.product-type.application"; productReference = A8792157CB4F27FB949C035F; buildConfigurationList = 1B672BF3DA427763BF644BE3; buildPhases = (878A52FC5FF6A57D50B7B870,E2AA269EB967A8853A258BFA,41D311A605520FC7B8B9A980); dependencies = (); buildRules = (); packageProductDependencies = (0D45F5FD462B8C70BFFB1002); };
+244210E48437B6556980A702 = {isa = PBXProject; attributes = {LastUpgradeCheck = 2600;}; buildConfigurationList = 76F8DEC3DFE0BDB465198890; compatibilityVersion = "Xcode 14.0"; developmentRegion = zh_CN; knownRegions = (zh_CN,en,Base); mainGroup = 0D6E4079E36703EBD37C0072; productRefGroup = 0A3E27B8CA818264D75C8D81; projectDirPath = ""; projectRoot = ""; targets = (A172CEDCAE47474B615C54D5); packageReferences = (BC4A71180870F7945155FBB0); };
+}; rootObject = 244210E48437B6556980A702;}

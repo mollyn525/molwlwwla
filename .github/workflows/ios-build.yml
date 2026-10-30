@@ -1,0 +1,36 @@
+name: iOS unsigned build and core tests
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - '.gitkeep'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and verify without Apple credentials
+        run: bash tools/build_macos.sh
+      - name: Preserve build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-evidence
+          path: |
+            build/*.log
+            build/*.json
+            build/*.txt
+            build/test-artifacts/
+          retention-days: 7
+      - name: Unsigned app for local personal signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: baduanjin-ios-unsigned
+          path: build/output/*
+          if-no-files-found: error
+          retention-days: 7
