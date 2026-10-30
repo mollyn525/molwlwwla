@@ -19,5 +19,5 @@ with zipfile.ZipFile(str(archive),'w',zipfile.ZIP_DEFLATED) as z:
 with zipfile.ZipFile(str(archive)) as z:
     assert z.testzip() is None
     for e in manifest:assert hashlib.sha256(z.read(e['path'])).hexdigest()==e['sha256']
-result={'artifact':archive.name,'sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'files':len(manifest),'swift_compiled':False,'swift_tests_executed':False,'iphone_installed':False,'cloud_upload_performed':False,'formal_capture_enabled':False,'hardware_writes_enabled':False}
+result={'artifact':archive.name,'sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'files':len(manifest),'source_only':True,'verification_source':'See the commit-specific GitHub Actions run and local cloud-build report; packaging source is not compilation','formal_capture_enabled':False,'hardware_writes_enabled':False}
 (out/'source-handoff.json').write_text(json.dumps(result,indent=2),encoding='utf8');print(json.dumps(result))
