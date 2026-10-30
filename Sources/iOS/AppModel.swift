@@ -59,6 +59,18 @@ import BaduanjinCore
         }
     }
     func cancelExport() { cancellation?.cancel() }
+    var version: String { "\(Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "未知") (\(Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "?"))" }
+    func exportConnectionDiagnostics() {
+        guard !busy, let files else { return }
+        let destination = files.root.appendingPathComponent("exports/connection-diagnostics-\(UUID().uuidString).json")
+        let devices: [[String: Any]] = engineState.devices.filter { $0.wanted || !$0.lastError.isEmpty }.map {
+            ["id":$0.id,"name":$0.name,"status":$0.status,"wanted":$0.wanted,"connected":$0.connected,"initialized":$0.initialized,"last_error":$0.lastError,"recent_10s_hz":$0.hz,"issues":$0.issues]
+        }
+        do {
+            try JSONFile.write(["schema_version":1,"app_version":version,"system_version":ProcessInfo.processInfo.operatingSystemVersionString,"created_ms":BluetoothEngine.wall(),"service_uuid":WitProtocol.service,"notify_uuid":WitProtocol.notify,"write_uuid":WitProtocol.write,"devices":devices,"connection_log":engineState.connectionLog],to:destination)
+            shareURL = destination
+        } catch { self.error = "连接诊断导出失败：\(error.localizedDescription)" }
+    }
     func device(_ role: BodyRole) -> DeviceSnapshot? { guard let id = roster[role.id]?.peripheralID else { return nil }; return engineState.devices.first { $0.id == id } }
     var checklist: [String] {
         var result = ["iOS正式采集尚未验收，当前先进行设备诊断"]

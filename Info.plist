@@ -8,8 +8,8 @@
 <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
 <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.0</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>0.1.1</string>
+<key>CFBundleVersion</key><string>2</string>
 <key>LSRequiresIPhoneOS</key><true/>
 <key>NSBluetoothAlwaysUsageDescription</key><string>用于连接你选定的WT9011DCL-BT50惯性传感器，记录八段锦动作数据。</string>
 <key>UIFileSharingEnabled</key><true/>

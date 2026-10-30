@@ -32,6 +32,7 @@ struct DevicesView: View {
                 Button("断开所有设备",role:.destructive){model.engine.disconnect()}.disabled(model.engineState.saving)
                 NavigationLink("少量设备诊断连接"){ DiagnosticPicker() }
             }
+            ConnectionStatusSection()
             Section("15个部位") {
                 ForEach(BodyRole.all) { role in
                     NavigationLink { RoleView(role:role) } label: {
@@ -53,10 +54,44 @@ struct DiagnosticPicker: View {
     @State private var selected = Set<String>()
     var body: some View {
         List {
+            StatusBanner()
             Text("先扫描，再按设备贴纸核对。诊断连接不自动绑定部位。")
             ForEach(model.engineState.found.keys.sorted(),id:\.self) { id in Toggle(isOn:Binding(get:{selected.contains(id)},set:{if $0 {selected.insert(id)} else {selected.remove(id)}})) { VStack(alignment:.leading){Text(model.engineState.found[id] ?? id);Text(id).font(.caption).foregroundStyle(.secondary)} } }
             Button("连接选中的 \(selected.count) 台"){ model.engine.connect(Array(selected)) }.disabled(model.busy || selected.isEmpty || selected.count > 15)
+            ConnectionStatusSection()
+            Button("断开所有设备",role:.destructive){model.engine.disconnect()}.disabled(model.engineState.saving)
+            NavigationLink("查看连接过程 / 导出诊断"){ConnectionLogView()}
         }.navigationTitle("诊断设备")
+    }
+}
+struct ConnectionStatusSection: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        let devices = model.engineState.devices.filter { $0.wanted || $0.connected }
+        if !devices.isEmpty {
+            Section("选定设备连接状态") {
+                ForEach(devices) { d in
+                    VStack(alignment:.leading,spacing:5) {
+                        Text(d.name).font(.headline)
+                        Text("\(d.status) · 初始化\(d.initialized ? "完成" : "未完成")")
+                        if !d.lastError.isEmpty { Text("最近失败：\(d.lastError)").font(.footnote).foregroundStyle(.orange) }
+                        if d.initialized {
+                            Text("近10秒 Hz（加速 / 角速 / 磁场 / 四元数）：" + d.hz.map { String(format:"%.2f",$0) }.joined(separator:" / ")).font(.caption).monospacedDigit()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+struct ConnectionLogView: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        List {
+            Text("版本 \(model.version) · 保留本次打开App以来最近200条连接事件，断开后仍可查看。")
+            Button("导出连接诊断"){model.exportConnectionDiagnostics()}.disabled(model.busy)
+            ForEach(Array(model.engineState.connectionLog.reversed().enumerated()),id:\.offset) { row in Text(row.element).font(.caption).textSelection(.enabled) }
+        }.navigationTitle("连接诊断")
     }
 }
 struct RoleView: View {
@@ -66,7 +101,7 @@ struct RoleView: View {
     var body: some View {
         List {
             if let d = model.device(role) {
-                Section("当前状态") { Text(d.name);Text(d.status);Text("固件 \(d.firmware)"); ForEach(d.issues,id:\.self){Text($0).foregroundStyle(.orange)} }
+                Section("当前状态") { Text(d.name);Text(d.status);Text("固件 \(d.firmware)"); if !d.lastError.isEmpty { Text("最近失败：\(d.lastError)").foregroundStyle(.orange) }; ForEach(d.issues,id:\.self){Text($0).foregroundStyle(.orange)} }
                 Section("实时数据") {
                     value("加速度 g",d.acceleration); value("角速度 °/s",d.gyro); value("磁场原始值",d.magnetic); value("四元数",d.quaternion)
                     Text("近10秒 Hz：" + d.hz.map{String(format:"%.2f",$0)}.joined(separator:" / "))
@@ -173,7 +208,7 @@ struct SettingsView:View {
         Section("异常提示"){Text("声音关闭 · 振动关闭");Text("保留界面提示和记录中的质量事件。")}
         Section("传感器配置"){Text("目标：自动惯性50Hz、九轴；保留每台安装方向。查询上限90次/秒/台，不等于接收率。");Button("读取当前配置"){model.engine.readConfiguration()}.disabled(model.busy);Text("配置写入尚未开放。").foregroundStyle(.secondary)}
         Section("硬件加速度校准"){Text("需原始Z正向朝上、放稳，并在启动前确认保持时长。");Text("iOS真实校准尚未验收，当前不发送校准指令。").foregroundStyle(.secondary)}
-        Section("独立版本 0.1.0-dev"){Text("仅使用本App文件。导出的ZIP可保存到“文件”或通过系统分享。");Text("手机接收时间不证明内部同步或多台同步；四元数范数正常不代表姿态正确。")}
+        Section("独立版本 \(model.version)"){NavigationLink("连接诊断 / 导出日志"){ConnectionLogView()};Text("仅使用本App文件。导出的ZIP可保存到“文件”或通过系统分享。");Text("手机接收时间不证明内部同步或多台同步；四元数范数正常不代表姿态正确。")}
     }.navigationTitle("设置") }
 }
 struct ShareSheet:UIViewControllerRepresentable {

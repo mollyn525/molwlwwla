@@ -5,12 +5,13 @@ import BaduanjinCore
 struct DeviceSnapshot: Identifiable {
     var id: String, name: String, status: String, wanted: Bool, connected: Bool, initialized: Bool
     var ages: [Double?], hz: [Double], acceleration: [Double], gyro: [Double], magnetic: [Double], quaternion: [Double]
-    var configurationOK: Bool, firmware: String, issues: [String]
+    var configurationOK: Bool, firmware: String, issues: [String], lastError: String
 }
 struct EngineSnapshot {
     var enabled = false, scanning = false, recording = false, saving = false
     var countdown = 0, elapsed = 0.0, message = "尚未连接", devices: [DeviceSnapshot] = []
     var found: [String: String] = [:]
+    var connectionLog: [String] = []
 }
 /// All CoreBluetooth state and parsing live on one queue; UI receives immutable snapshots.
 /// This initial integration sends read-register commands only. Hardware writes are not exposed.
@@ -18,7 +19,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     private final class Link {
         let peripheral: CBPeripheral
         var name: String, wanted = false, connected = false, subscribed = false, initialized = false
-        var status = "未连接", writer: CBCharacteristic?, notifier: CBCharacteristic?
+        var status = "未连接", lastError = "", closing = false, writer: CBCharacteristic?, notifier: CBCharacteristic?
         var parser = WitParser(), scheduler = QueryScheduler(), recent = (0..<4).map { _ in RecentStream() }, pose = PoseWindow()
         var settings: [Int: [String: Any]] = [:], registers: [Int: Int] = [:], firmware = "未知"
         var acceleration = [0.0,0,0], gyro = [0.0,0,0], magnetic = [0.0,0,0], quaternion = [1.0,0,0,0]
@@ -31,6 +32,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     private var scanning = false, scanGeneration = UUID(), cursor = 0, lastPublish: UInt64 = 0, lastFlush: UInt64 = 0
     private var writer: SessionWriter?, targets: [UUID] = [], startNS: UInt64 = 0, actionNS: UInt64 = 0, endNS: UInt64 = 0, fault = false, saving = false
     private var message = "请扫描并逐一核对设备编号", appActive = true
+    private var connectionLog: [String] = []
     var onSnapshot: ((EngineSnapshot) -> Void)?, onSaved: (() -> Void)?
     static func now() -> UInt64 { DispatchTime.now().uptimeNanoseconds }
     static func wall() -> Int64 { Int64(Date().timeIntervalSince1970*1000) }
@@ -50,7 +52,8 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         self.central.stopScan(); self.scanning = false; self.scanGeneration = UUID()
         for p in self.central.retrievePeripherals(withIdentifiers: uuids) where self.links[p.identifier] == nil { self.links[p.identifier] = Link(p, name: p.name ?? p.identifier.uuidString) }
         guard uuids.allSatisfy({ self.links[$0] != nil }) else { self.message = "部分UUID无法恢复，请重新扫描绑定"; return }
-        for (id,d) in self.links { d.wanted = uuids.contains(id); if !d.wanted { self.central.cancelPeripheralConnection(d.peripheral) } else if !d.connected { d.retryAt = 0; d.retries = 0 } }
+        for (id,d) in self.links { d.wanted = uuids.contains(id); if !d.wanted { self.central.cancelPeripheralConnection(d.peripheral) } else if !d.connected { d.retryAt = 0; d.retries = 0; d.lastError = "" } }
+        self.log(nil,"选择连接 \(uuids.count) 台；目标服务 \(WitProtocol.service)")
         self.message = "连接选定设备，不自动开始记录"
     } }
     func disconnect() { work.async {
@@ -83,6 +86,22 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     } }
     func stop() { work.async { self.finish(reason: "诊断手动结束", at: Self.now()) } }
     private func event(_ d: Link?, _ text: String) { writer?.event(id: d?.peripheral.identifier.uuidString ?? "", ns: Self.now(), message: text) }
+    private func log(_ d: Link?, _ text: String) {
+        let device = d.map { "\($0.name) [\($0.peripheral.identifier.uuidString)]" } ?? "App"
+        connectionLog.append("\(Self.wall()) \(device): \(text)")
+        if connectionLog.count > 200 { connectionLog.removeFirst(connectionLog.count-200) }
+        event(d,"connection \(text)")
+    }
+    private func detail(_ error: Error?) -> String {
+        guard let error else { return "系统未提供错误码" }
+        let value = error as NSError
+        return "\(value.domain)(\(value.code)): \(value.localizedDescription)"
+    }
+    private func fail(_ d: Link, _ reason: String) {
+        guard !d.closing else { return }
+        d.lastError = reason; d.status = reason; d.closing = true
+        log(d,reason); central.cancelPeripheralConnection(d.peripheral)
+    }
     private func finish(reason: String, at: UInt64) {
         guard let recorder = writer else { return }; event(nil, "record_end reason=\(reason)")
         var devices: [[String: Any]] = []; var quality = actionNS > 0 && !fault
@@ -106,11 +125,11 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         if central?.state == .poweredOn {
             let values = links.values.sorted { $0.peripheral.identifier.uuidString < $1.peripheral.identifier.uuidString }
             var connecting = values.filter { $0.wanted && $0.peripheral.state == .connecting }.count
-            for d in values where d.wanted {
+            for d in values where d.wanted && !d.closing {
                 if d.peripheral.state == .disconnected && now >= d.retryAt && connecting < 2 {
-                    d.status = "连接中"; d.stageAt = now; d.parser = WitParser(); d.recent = (0..<4).map { _ in RecentStream() }; d.pose = PoseWindow(); d.settings = [:]; d.registers = [:]; d.firmware = "未知"; d.writer = nil; d.notifier = nil; d.subscribed = false; d.initialized = false; d.reads = []; d.reading = nil; d.scheduler = QueryScheduler(); self.central.connect(d.peripheral); connecting += 1
+                    d.status = "连接中"; d.stageAt = now; d.parser = WitParser(); d.recent = (0..<4).map { _ in RecentStream() }; d.pose = PoseWindow(); d.settings = [:]; d.registers = [:]; d.firmware = "未知"; d.writer = nil; d.notifier = nil; d.subscribed = false; d.initialized = false; d.reads = []; d.reading = nil; d.scheduler = QueryScheduler(); log(d,"请求连接，第\(d.retries+1)次"); self.central.connect(d.peripheral); connecting += 1
                 }
-                if !d.initialized && d.peripheral.state != .disconnected && now > d.stageAt && now-d.stageAt > 15*secondNS { d.status = "连接/初始化超时"; central.cancelPeripheralConnection(d.peripheral) }
+                if !d.initialized && d.peripheral.state != .disconnected && now > d.stageAt && now-d.stageAt > 15*secondNS { fail(d,"连接/初始化超时：\(d.status)") }
             }
             if !values.isEmpty {
                 let startCursor = cursor; var submitted = 0
@@ -137,14 +156,14 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         if now-lastPublish >= 250_000_000 { publish(now); lastPublish = now }
     }
     private func pump(_ d: Link, _ now: UInt64) -> Bool {
-        guard d.wanted && d.connected && d.subscribed, let c = d.writer else { return false }
+        guard d.wanted && d.connected && d.subscribed && !d.closing, let c = d.writer else { return false }
         if d.reading != nil {
-            if now-d.readAt >= 2*secondNS { d.status = "回读超时，重新连接"; central.cancelPeripheralConnection(d.peripheral); d.reading = nil }
+            if now-d.readAt >= 2*secondNS { fail(d,String(format:"寄存器0x%02X回读超时",d.reading!)); d.reading = nil }
             return false
         }
         guard d.peripheral.canSendWriteWithoutResponse else { return false }
         let reg: Int
-        if !d.reads.isEmpty { reg = d.reads.removeFirst(); d.reading = reg; d.readAt = now }
+        if !d.reads.isEmpty { reg = d.reads.removeFirst(); d.reading = reg; d.readAt = now; log(d,String(format:"读取寄存器0x%02X",reg)) }
         else { guard d.initialized && now >= d.scheduler.next else { return false }; reg = d.scheduler.choose(now); d.scheduler.sent(reg, at: now, hz: 90) }
         guard let bytes = try? WitProtocol.read(reg) else { return false }
         d.peripheral.writeValue(bytes, for: c, type: .withoutResponse)
@@ -155,20 +174,22 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         snapshot.countdown = writer != nil && actionNS == 0 ? max(1,3-Int((now-startNS)/secondNS)) : 0
         snapshot.elapsed = writer != nil && actionNS > 0 ? Double(now-actionNS)/1e9 : 0; snapshot.message = message
         snapshot.found = Dictionary(uniqueKeysWithValues: found.map { ($0.key.uuidString,$0.value) })
+        snapshot.connectionLog = connectionLog
         snapshot.devices = links.values.sorted { $0.name < $1.name }.map { d in
             let ages = d.recent.map { $0.age(now) }; var hz: [Double] = []
             for i in 0..<4 { hz.append(d.recent[i].rate(now, seconds: 10)) }
             var issues: [String] = []
             if d.wanted && !d.connected { issues.append("断开/重连中") }
             if d.connected { for k in 0..<4 { if let age = ages[k], age >= 500 { issues.append("\(streams[k])停更\(String(format:"%.1f",age/1000))秒") } else if ages[k] == nil { issues.append("\(streams[k])尚未收到") }; if d.initialized && now-d.stageAt >= 10*secondNS && hz[k] < 30 { issues.append("\(streams[k])近10秒不足30Hz") } } }
-            return DeviceSnapshot(id:d.peripheral.identifier.uuidString,name:d.name,status:d.status,wanted:d.wanted,connected:d.connected,initialized:d.initialized,ages:ages,hz:hz,acceleration:d.acceleration,gyro:d.gyro,magnetic:d.magnetic,quaternion:d.quaternion,configurationOK:d.registers[0x03] == 8 && d.registers[0x24] == 0 && d.registers[0x96] == 0,firmware:d.firmware,issues:issues)
+            return DeviceSnapshot(id:d.peripheral.identifier.uuidString,name:d.name,status:d.status,wanted:d.wanted,connected:d.connected,initialized:d.initialized,ages:ages,hz:hz,acceleration:d.acceleration,gyro:d.gyro,magnetic:d.magnetic,quaternion:d.quaternion,configurationOK:d.registers[0x03] == 8 && d.registers[0x24] == 0 && d.registers[0x96] == 0,firmware:d.firmware,issues:issues,lastError:d.lastError)
         }
         DispatchQueue.main.async { self.onSnapshot?(snapshot) }
     }
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        log(nil,"蓝牙状态=\(central.state.rawValue)")
         if central.state != .poweredOn {
             if writer != nil { fault = true; event(nil,"bluetooth_unavailable") }
-            for d in links.values { d.connected = false; d.initialized = false; d.subscribed = false; d.reading = nil; d.status = "蓝牙不可用" }
+            for d in links.values { d.connected = false; d.initialized = false; d.subscribed = false; d.reading = nil; d.closing = false; d.status = "蓝牙不可用" }
             scanning = false; message = "请开启蓝牙并允许本App访问蓝牙"
         }
     }
@@ -178,36 +199,47 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         if links[peripheral.identifier] == nil { links[peripheral.identifier] = Link(peripheral, name:name) }
     }
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        guard let d = links[peripheral.identifier], d.wanted, d.peripheral === peripheral else { central.cancelPeripheralConnection(peripheral); return }
-        d.connected = true; d.stageAt = Self.now(); d.status = "发现服务"; peripheral.delegate = self; peripheral.discoverServices([CBUUID(string: WitProtocol.service)])
+        guard let d = links[peripheral.identifier], d.wanted, !d.closing, d.peripheral === peripheral else { central.cancelPeripheralConnection(peripheral); return }
+        d.connected = true; d.stageAt = Self.now(); d.status = "发现服务"; log(d,"已连接，开始发现服务"); peripheral.delegate = self; peripheral.discoverServices([CBUUID(string: WitProtocol.service)])
     }
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) { disconnected(peripheral,error) }
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) { disconnected(peripheral,error) }
     private func disconnected(_ peripheral: CBPeripheral, _ error: Error?) {
         guard let d = links[peripheral.identifier], d.peripheral === peripheral else { return }
         if writer != nil && targets.contains(peripheral.identifier) { fault = true; event(d,"disconnected \(error?.localizedDescription ?? "连接结束")") }
-        d.connected = false; d.initialized = false; d.subscribed = false; d.reading = nil; d.reads = []; d.status = d.wanted ? "等待重连" : "已断开"
+        if d.wanted && !d.closing { d.lastError = "连接中断：\(detail(error))" }
+        log(d,"连接结束：\(detail(error))；最近失败=\(d.lastError)")
+        d.connected = false; d.initialized = false; d.subscribed = false; d.reading = nil; d.reads = []; d.closing = false; d.status = d.wanted ? "等待重连" : "已断开"
         d.retries += 1; d.retryAt = Self.now()+UInt64(min(30,1 << min(d.retries,4)))*secondNS
     }
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        guard let d = links[peripheral.identifier], d.wanted && d.connected else { return }
-        guard error == nil, let service = peripheral.services?.first(where: { $0.uuid == CBUUID(string:WitProtocol.service) }) else { d.status = "缺少FFE5服务"; central.cancelPeripheralConnection(peripheral); return }
+        guard let d = links[peripheral.identifier], d.wanted && d.connected && !d.closing else { return }
+        log(d,"发现服务：\(peripheral.services?.map { $0.uuid.uuidString }.joined(separator:", ") ?? "无")")
+        guard error == nil else { fail(d,"服务发现失败：\(detail(error))"); return }
+        guard let service = peripheral.services?.first(where: { $0.uuid == CBUUID(string:WitProtocol.service) }) else { fail(d,"缺少维特自定义FFE5服务（9A34FB）"); return }
+        d.status = "发现读写特征"
         peripheral.discoverCharacteristics([CBUUID(string:WitProtocol.notify),CBUUID(string:WitProtocol.write)], for:service)
     }
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        guard let d = links[peripheral.identifier], d.wanted && d.connected else { return }
+        guard let d = links[peripheral.identifier], d.wanted && d.connected && !d.closing, service.uuid == CBUUID(string:WitProtocol.service) else { return }
+        log(d,"发现特征：\(service.characteristics?.map { "\($0.uuid.uuidString) properties=\($0.properties.rawValue)" }.joined(separator:", ") ?? "无")")
+        guard error == nil else { fail(d,"特征发现失败：\(detail(error))"); return }
         d.writer = service.characteristics?.first { $0.uuid == CBUUID(string:WitProtocol.write) }; d.notifier = service.characteristics?.first { $0.uuid == CBUUID(string:WitProtocol.notify) }
-        guard error == nil, let notify = d.notifier, d.writer?.properties.contains(.writeWithoutResponse) == true, notify.properties.contains(.notify) else { d.status = "特征或属性不匹配"; central.cancelPeripheralConnection(peripheral); return }
+        guard let notify = d.notifier, d.writer?.properties.contains(.writeWithoutResponse) == true, notify.properties.contains(.notify) else { fail(d,"维特FFE4/FFE9特征或通知/写入属性不匹配"); return }
+        d.status = "订阅数据通知"
         peripheral.setNotifyValue(true, for:notify)
     }
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-        guard let d = links[peripheral.identifier], d.wanted && d.connected else { return }
-        guard characteristic === d.notifier, error == nil, characteristic.isNotifying else { central.cancelPeripheralConnection(peripheral); return }
+        guard let d = links[peripheral.identifier], d.wanted && d.connected && !d.closing, characteristic === d.notifier else { return }
+        guard error == nil, characteristic.isNotifying else { fail(d,"订阅通知失败：\(detail(error))"); return }
+        log(d,"通知订阅成功")
         d.subscribed = true; d.status = "读取固件与配置"; d.reads = [0x2e,0x03,0x23,0x24,0x96]; d.reading = nil
     }
     func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) { /* Fair timer resumes eligible writes; no firmware acknowledgement is implied. */ }
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        guard let d = links[peripheral.identifier], d.wanted && d.connected && d.subscribed, characteristic === d.notifier, error == nil, let bytes = characteristic.value else { return }
+        guard let d = links[peripheral.identifier], d.wanted && d.connected && d.subscribed && !d.closing, characteristic === d.notifier else { return }
+        guard error == nil else { fail(d,"接收通知失败：\(detail(error))"); return }
+        guard let bytes = characteristic.value else { return }
         let ns = Self.now(), wall = Self.wall(); writer?.raw(id:peripheral.identifier.uuidString,ns:ns,wall:wall,data:bytes)
         for frame in d.parser.accept(bytes) {
             writer?.frame(id:peripheral.identifier.uuidString,ns:ns,wall:wall,frame:frame,verified:d.registers[0x96] == 0)
@@ -218,8 +250,8 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
             else if frame.register >= 0 {
                 d.registers[frame.register] = frame.words[0] & 65535; d.settings[frame.register] = ["elapsed_ns":ns,"packet_hex":WitProtocol.hex(frame.bytes),"words":frame.words]
                 if frame.register == 0x2e { let a = frame.words[0] & 65535, b = frame.words[1] & 65535; d.firmware = "\(((b & 32767) << 2) | (a >> 14)).\((a >> 8) & 63).\(a & 255)" }
-                if d.reading == frame.register && ns >= d.readAt { d.reading = nil }
-                if d.reading == nil && d.reads.isEmpty && [0x2e,0x03,0x23,0x24,0x96].allSatisfy({d.registers[$0] != nil}) { d.initialized = true; d.status = "四项接收中" }
+                if d.reading == frame.register && ns >= d.readAt { log(d,String(format:"寄存器0x%02X回读=%d",frame.register,frame.words[0] & 65535)); d.reading = nil }
+                if !d.initialized && d.reading == nil && d.reads.isEmpty && [0x2e,0x03,0x23,0x24,0x96].allSatisfy({d.registers[$0] != nil}) { d.initialized = true; d.status = "四项接收中"; log(d,"初始化完成，开始四项接收") }
             }
             for i in indices { d.recent[i].add(ns); if writer != nil && actionNS > 0 && d.trialStreams.count == 4 { d.trialStreams[i].add(ns) } }
         }

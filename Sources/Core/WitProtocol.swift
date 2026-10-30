@@ -5,7 +5,11 @@ public enum LabError: Error, LocalizedError {
     public var errorDescription: String? { if case .invalid(let s) = self { return s }; return nil }
 }
 public enum WitProtocol {
-    public static let service = "FFE5", notify = "FFE4", write = "FFE9"
+    // Vendor UUIDs end in 9A34FB, not Bluetooth's standard 9B34FB base.
+    // Short forms such as FFE5 address a different service in CoreBluetooth.
+    public static let service = "0000ffe5-0000-1000-8000-00805f9a34fb"
+    public static let notify = "0000ffe4-0000-1000-8000-00805f9a34fb"
+    public static let write = "0000ffe9-0000-1000-8000-00805f9a34fb"
     public static let profile = "wt9011dcl-ios-independent-v1"
     public static func read(_ register: Int) throws -> Data {
         guard [0x51,0x3a,0x2e,0x03,0x01,0x05,0x1f,0x23,0x24,0x63,0x72,0x96].contains(register) else { throw LabError.invalid("不支持的寄存器") }

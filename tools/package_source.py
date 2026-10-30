@@ -1,5 +1,5 @@
 """Allowlisted source-only handoff. Never package Android recordings or Apple credentials."""
-import hashlib,json,zipfile
+import hashlib,json,zipfile,plistlib
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 allowed=['README.md','Package.swift','Info.plist','.gitignore','Sources','Tests','tools','.github','Baduanjin.xcodeproj']
@@ -9,7 +9,8 @@ for name in allowed:
     files += [p] if p.is_file() else [f for f in p.rglob('*') if f.is_file() and '__pycache__' not in f.parts]
 assert not any(p.suffix in ('.p12','.p8','.mobileprovision','.ipa','.tar') for p in files)
 out=ROOT/'build/output';out.mkdir(parents=True,exist_ok=True)
-archive=out/'baduanjin-ios-0.1.0-dev-source.zip'
+version=plistlib.loads((ROOT/'Info.plist').read_bytes())['CFBundleShortVersionString']
+archive=out/('baduanjin-ios-'+version+'-dev-source.zip')
 manifest=[]
 with zipfile.ZipFile(str(archive),'w',zipfile.ZIP_DEFLATED) as z:
     for p in sorted(files):

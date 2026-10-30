@@ -1,8 +1,20 @@
 import XCTest
 import Foundation
+import CoreBluetooth
 @testable import BaduanjinCore
 
 final class CoreTests: XCTestCase {
+    func testVendorUUIDsMatchAndroidAndCannotBeShortened() throws {
+        let url = try XCTUnwrap(Bundle.module.url(forResource:"protocol-vectors",withExtension:"json",subdirectory:"Fixtures"))
+        let object = try JSONSerialization.jsonObject(with:Data(contentsOf:url)) as! [String:Any]
+        let gatt = try XCTUnwrap(object["gatt"] as? [String:String])
+        for (key,actual,short) in [("service",WitProtocol.service,"FFE5"),("notify",WitProtocol.notify,"FFE4"),("write",WitProtocol.write,"FFE9")] {
+            let expected = try XCTUnwrap(gatt[key])
+            XCTAssertEqual(actual.lowercased(),expected.lowercased())
+            XCTAssertEqual(CBUUID(string:actual),CBUUID(string:expected))
+            XCTAssertNotEqual(CBUUID(string:actual),CBUUID(string:short),"Vendor UUID must not use the standard Bluetooth base")
+        }
+    }
     func testAndroidProductionParserFixtures() throws {
         let url = try XCTUnwrap(Bundle.module.url(forResource:"protocol-vectors",withExtension:"json",subdirectory:"Fixtures"))
         let object = try JSONSerialization.jsonObject(with:Data(contentsOf:url)) as! [String:Any]
