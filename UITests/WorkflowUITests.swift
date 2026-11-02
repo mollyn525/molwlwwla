@@ -1,0 +1,45 @@
+import XCTest
+
+final class WorkflowUITests: XCTestCase {
+    func testFiveTabsTaskPersistenceAndFormalGate() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages","(zh-Hans)","-AppleLocale","zh_CN"]
+        addUIInterruptionMonitor(withDescription:"System Bluetooth prompt") { alert in
+            for title in ["允许","Allow","好","OK"] where alert.buttons[title].exists { alert.buttons[title].tap(); return true }
+            return false
+        }
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["设备"].waitForExistence(timeout:15))
+        app.tap()
+        for title in ["设备","采集","佩戴","记录","设置"] { XCTAssertTrue(app.tabBars.buttons[title].exists) }
+        attach(app,"设备人体图")
+        app.tabBars.buttons["采集"].tap()
+        app.buttons["新建受试者任务"].tap()
+        let dialog = app.alerts["新建匿名受试者任务"]
+        XCTAssertTrue(dialog.waitForExistence(timeout:5))
+        dialog.textFields.firstMatch.tap(); dialog.textFields.firstMatch.typeText("S_UI_TEST")
+        dialog.buttons["建立"].tap()
+        app.buttons["开始正式收集"].tap()
+        XCTAssertTrue(app.buttons["collectionAction0"].waitForExistence(timeout:5))
+        attach(app,"八动作固定编号")
+        app.buttons["collectionAction0"].tap()
+        let start = app.buttons["formalStart"]
+        XCTAssertTrue(start.waitForExistence(timeout:5)); XCTAssertFalse(start.isEnabled)
+        attach(app,"缺少设备时禁止正式录制")
+        app.tabBars.buttons["佩戴"].tap()
+        XCTAssertTrue(app.buttons["采集15部位完整参考姿态"].waitForExistence(timeout:5))
+        app.tabBars.buttons["记录"].tap()
+        XCTAssertTrue(app.buttons["刷新记录"].waitForExistence(timeout:5))
+        app.tabBars.buttons["设置"].tap()
+        XCTAssertTrue(app.buttons["应用 / 重试未达标设备"].waitForExistence(timeout:5))
+        XCTAssertFalse(app.buttons["应用 / 重试未达标设备"].isEnabled)
+        attach(app,"配置与校准入口")
+        app.terminate(); app.launch()
+        app.tabBars.buttons["采集"].tap()
+        XCTAssertTrue(app.staticTexts["S_UI_TEST · 0/120条合格"].waitForExistence(timeout:8))
+    }
+    private func attach(_ app: XCUIApplication, _ name: String) {
+        let attachment = XCTAttachment(screenshot:app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+    }
+}

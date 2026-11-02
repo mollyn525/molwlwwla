@@ -2,7 +2,7 @@
 import hashlib,json,zipfile,plistlib
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-allowed=['README.md','Package.swift','Info.plist','.gitignore','Sources','Tests','tools','.github','Baduanjin.xcodeproj']
+allowed=['README.md','Package.swift','Info.plist','.gitignore','Sources','Tests','UITests','tools','.github','Baduanjin.xcodeproj']
 files=[]
 for name in allowed:
     p=ROOT/name

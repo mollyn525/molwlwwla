@@ -172,11 +172,28 @@ final class ParityTests: XCTestCase {
     func testInterruptedOperationRecoveryIsAppendOnlyAndNeverSuccess() throws {
         let root = try folder()
         try OperationAudit.append(root:root,type:"operation_started",details:["operation_id":"one","type":"accelerometer_calibration"],at:1)
+        try OperationAudit.append(root:root,type:"operation_tx_submitted",details:["operation_id":"one","hex":"FFAA000000"],at:1)
         let url = root.appendingPathComponent("operations.jsonl"), before = try Data(contentsOf:url)
         try OperationAudit.recover(root:root,at:2); try OperationAudit.recover(root:root,at:3)
         let after = try Data(contentsOf:url); XCTAssertEqual(after.prefix(before.count),before)
         let interrupted = try OperationAudit.read(root:root).filter { $0["type"] as? String == "operation_interrupted" }; XCTAssertEqual(interrupted.count,1)
         XCTAssertEqual((interrupted[0]["details"] as? [String:Any])?["verified"] as? Bool,false)
+        XCTAssertEqual((interrupted[0]["details"] as? [String:Any])?["save_submitted"] as? Bool,true)
+    }
+    func testMissingFilesCannotRetainAcceptedStatusOrBeOverridden() throws {
+        let files = try StudyFiles(root:folder()); try files.create(subject:"S002",at:1)
+        let directory = try save(files,assignment:files.book.begin(action:0,slot:1),quality:true)
+        try FileManager.default.removeItem(at:directory.appendingPathComponent("samples.csv"))
+        try files.recover(); XCTAssertEqual(files.book.total,0); XCTAssertFalse(files.warnings.isEmpty)
+        XCTAssertThrowsError(try files.review(id:directory.lastPathComponent,decision:"accepted",reason:"missing file",revision:0,at:2))
+    }
+    func testDamagedAuditKeepsExistingDataAccessibleAndBlocksNewAudit() throws {
+        let root = try folder(), original = Data("{broken\n".utf8)
+        try original.write(to:root.appendingPathComponent("operations.jsonl"))
+        let files = try StudyFiles(root:root); XCTAssertFalse(files.warnings.isEmpty)
+        XCTAssertThrowsError(try files.audit("new",[:]))
+        try files.recover(); XCTAssertFalse(files.warnings.isEmpty)
+        XCTAssertEqual(try Data(contentsOf:root.appendingPathComponent("operations.jsonl")),original)
     }
 }
 

@@ -96,6 +96,10 @@ public final class StudyFiles {
                 let review = dir.appendingPathComponent("action-review.json")
                 if fm.fileExists(atPath: review.path) { trial.reviews = try JSONFile.decode([Review].self, from: review) }
                 if !trial.reviewValid { trial.qualityPassed = false; warnings.append("\(trial.id)：复核历史损坏") }
+                if trial.qualityPassed {
+                    let missing = ArchiveExporter.required.filter { !fm.fileExists(atPath:dir.appendingPathComponent($0).path) }
+                    if !missing.isEmpty { trial.qualityPassed = false; warnings.append("\(trial.id)：记录缺少必要文件："+missing.joined(separator:"、")) }
+                }
                 trials.append(trial)
             } catch { warnings.append("\(dir.lastPathComponent)：\(error.localizedDescription)") }
         }

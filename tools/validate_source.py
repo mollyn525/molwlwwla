@@ -30,7 +30,7 @@ def balanced(text,path):
         assert closing is None,'Unclosed delimiter '+str(closing)+' opened at line '+str(opened)+' in '+path
         return i
     code(0)
-swift=list((ROOT/'Sources').rglob('*.swift'))+list((ROOT/'Tests').glob('*.swift'))+[ROOT/'Package.swift']
+swift=list((ROOT/'Sources').rglob('*.swift'))+list((ROOT/'Tests').glob('*.swift'))+list((ROOT/'UITests').glob('*.swift'))+[ROOT/'Package.swift']
 for file in swift:balanced(file.read_text(encoding='utf8'),file.relative_to(ROOT).as_posix())
 with (ROOT/'Info.plist').open('rb') as f:info=plistlib.load(f)
 assert info['NSBluetoothAlwaysUsageDescription'] and info['UIFileSharingEnabled']

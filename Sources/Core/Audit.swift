@@ -23,6 +23,7 @@ public enum OperationAudit {
         let rows = try read(root:root); var pending: [String:[String:Any]] = [:]
         for row in rows { guard let d = row["details"] as? [String:Any], let id = d["operation_id"] as? String else { continue }
             if row["type"] as? String == "operation_started" { pending[id] = d }
+            if row["type"] as? String == "operation_tx_submitted", d["hex"] as? String == "FFAA000000", pending[id] != nil { pending[id]?["save_submitted"] = true }
             if ["operation_result","operation_interrupted"].contains(row["type"] as? String ?? "") { pending.removeValue(forKey:id) }
         }
         for (_,var d) in pending {

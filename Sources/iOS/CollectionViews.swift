@@ -59,7 +59,7 @@ struct CollectionView: View {
             ForEach(0..<8,id:\.self) { a in
                 NavigationLink { ActionView(action:a) } label: {
                     VStack(alignment:.leading) { Text(model.study?.actions[a] ?? "动作\(a+1)").font(.headline); Text(String(format:"%03d–%03d · %d/15合格",a*15+1,(a+1)*15,model.book.count(action:a))) }
-                }
+                }.accessibilityIdentifier("collectionAction\(a)")
             }
             Button("导出当前任务全部尝试") { model.export(model.trials.filter { $0.assignment?.study_id == model.study?.id && !$0.diagnostic }) }.disabled(model.busy)
             NavigationLink("查看完整采前清单") { PreflightView() }

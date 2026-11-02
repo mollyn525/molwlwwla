@@ -29,6 +29,7 @@ jobs:
             build/*.txt
             build/*.xml
             build/test-artifacts/
+            build/ui-screenshots/
           retention-days: 7
       - name: Unsigned app for local personal signing
         uses: actions/upload-artifact@v4
