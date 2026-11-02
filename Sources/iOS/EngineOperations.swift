@@ -191,7 +191,7 @@ extension BluetoothEngine {
     func finishBatch() {
         guard let b = batch else { return }
         for id in b.remaining { if let d = links[id] { d.lastOperation = "本批后续操作已取消，未执行"; operationResults.append(d.name+"："+d.lastOperation) } }
-        for d in links.values { d.maintenance = false; d.monitor = nil; d.readyAt = Self.now(); d.goodSince = 0; d.recent = (0..<4).map { _ in RecentStream() }; d.scheduler = QueryScheduler() }
+        for d in links.values { d.maintenance = false; d.monitor = nil; d.readyAt = Self.now(); d.goodSince = 0; d.lowSince = [0,0,0,0]; d.recent = (0..<4).map { _ in RecentStream() }; d.scheduler = QueryScheduler() }
         if let root { try? OperationAudit.append(root:root,type:"operation_batch_finished",details:["batch_id":b.id,"cancelled":b.cancelled,"completed":b.completed,"total":b.total],at:Self.wall()) }
         batch = nil; calibration = nil; message = b.cancelled ? "批量操作已停止，请核对逐台结果；已提交指令不会自动撤销":"批量操作结束，请查看逐台结果；正在重新检查连续数据"
         DispatchQueue.main.async { self.onOperationFinished?() }; notifyRequestFinished()

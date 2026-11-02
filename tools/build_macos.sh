@@ -12,7 +12,7 @@ python3 tools/check_test_exports.py "$IMU_TEST_ARTIFACT_DIR"
 xcodebuild -project Baduanjin.xcodeproj -scheme Baduanjin -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath build/simulator CODE_SIGNING_ALLOWED=NO build > build/simulator-build.log 2>&1 || { tail -n 100 build/simulator-build.log; exit 1; }
 simulator_id=$(xcrun simctl list devices available --json | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(x["udid"] for k,v in sorted(d["devices"].items(),reverse=True) if "iOS" in k for x in v if "iPhone" in x["name"]))')
 ui_status=0
-xcodebuild -project Baduanjin.xcodeproj -scheme Baduanjin -configuration Debug -destination "platform=iOS Simulator,id=$simulator_id" -parallel-testing-enabled NO -derivedDataPath build/simulator -resultBundlePath build/ui-tests.xcresult CODE_SIGNING_ALLOWED=NO test > build/ui-tests.log 2>&1 || ui_status=$?
+xcodebuild -project Baduanjin.xcodeproj -scheme Baduanjin -configuration Debug -destination "platform=iOS Simulator,id=$simulator_id" -parallel-testing-enabled NO -derivedDataPath build/ui -resultBundlePath build/ui-tests.xcresult CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES ARCHS="$(uname -m)" test > build/ui-tests.log 2>&1 || ui_status=$?
 xcrun xcresulttool get test-results summary --path build/ui-tests.xcresult > build/ui-test-summary.json || true
 xcrun xcresulttool export attachments --path build/ui-tests.xcresult --output-path build/ui-screenshots || true
 if [ "$ui_status" -ne 0 ]; then tail -n 100 build/ui-tests.log; exit "$ui_status"; fi

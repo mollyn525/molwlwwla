@@ -11,7 +11,7 @@ final class WorkflowUITests: XCTestCase {
         }
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["设备"].waitForExistence(timeout:15))
-        app.tap()
+        app.tabBars.buttons["设备"].tap()
         for title in ["设备","采集","佩戴","记录","设置"] { XCTAssertTrue(app.tabBars.buttons[title].exists) }
         attach(app,"设备人体图")
         app.tabBars.buttons["采集"].tap()
