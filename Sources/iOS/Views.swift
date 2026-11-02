@@ -31,12 +31,13 @@ struct StatusBanner: View {
 }
 struct DevicesView: View {
     @EnvironmentObject var model: AppModel
+    @State private var bodyRole: Int?
     var body: some View {
         List {
             StatusBanner()
             Section {
                 NavigationLink("开始正式收集") { if model.study == nil { CaptureView() } else { CollectionView() } }.font(.headline)
-                BodyMapView().frame(height:430)
+                BodyMapView(selectedRole:$bodyRole).frame(height:430)
                 Text("正面示意 · 左右按佩戴者 · 点击部位查看或绑定").font(.caption)
             }
             Section {
@@ -59,6 +60,7 @@ struct DevicesView: View {
             }
             Text("绿色仅表示连接和近期四项更新，不代表30Hz达标、佩戴正确或姿态精度合格。").font(.footnote).foregroundStyle(.secondary)
         }.buttonStyle(.borderless).navigationTitle("设备").navigationBarTitleDisplayMode(.inline)
+         .navigationDestination(item:$bodyRole) { index in RoleView(role:BodyRole.all[index]) }
     }
     func color(_ d:DeviceSnapshot?) -> Color { guard let d else{return .gray}; if !d.connected {return .red}; if !d.initialized {return .blue}; return d.ages.allSatisfy { $0 != nil && $0! < 500 } ? .green : .orange }
 }

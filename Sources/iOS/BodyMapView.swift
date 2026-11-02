@@ -3,6 +3,7 @@ import BaduanjinCore
 
 struct BodyMapView: View {
     @EnvironmentObject var model: AppModel
+    @Binding var selectedRole: Int?
     private let points: [(CGFloat,CGFloat)] = [(0.5,0.10),(0.5,0.28),(0.5,0.46),(0.70,0.27),(0.30,0.27),(0.77,0.40),(0.23,0.40),(0.84,0.53),(0.16,0.53),(0.60,0.60),(0.40,0.60),(0.62,0.77),(0.38,0.77),(0.65,0.93),(0.35,0.93)]
     var body: some View {
         TimelineView(.periodic(from:.now,by:1)) { _ in
@@ -16,13 +17,14 @@ struct BodyMapView: View {
                         context.stroke(path,with:.color(.teal.opacity(0.22)),style:StrokeStyle(lineWidth:18,lineCap:.round,lineJoin:.round))
                     }
                     ForEach(Array(BodyRole.all.enumerated()),id:\.element.id) { index,role in
-                        NavigationLink { RoleView(role:role) } label: {
+                        Button { selectedRole = index } label: {
                             VStack(spacing:2) {
                                 ZStack { Circle().fill(color(role)).frame(width:27,height:27); if attention(role) { Text("!").font(.headline.bold()).foregroundStyle(.white) } }
                                 Text(role.name).font(.system(size:11,weight:.semibold)).foregroundStyle(.primary).padding(.horizontal,3).background(Color(.systemBackground).opacity(0.9))
-                            }.frame(minWidth:44,minHeight:44)
-                        }.buttonStyle(.plain).position(x:points[index].0*geo.size.width,y:points[index].1*geo.size.height)
+                            }.frame(width:64,height:48)
+                        }.buttonStyle(.plain).frame(width:64,height:48).position(x:points[index].0*geo.size.width,y:points[index].1*geo.size.height)
                          .accessibilityLabel(role.name+" · "+(model.device(role)?.status ?? "未连接"))
+                         .accessibilityIdentifier("bodyRole_"+role.id)
                     }
                 }
             }

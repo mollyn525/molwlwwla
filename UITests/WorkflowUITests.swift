@@ -13,7 +13,15 @@ final class WorkflowUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["设备"].waitForExistence(timeout:15))
         app.tabBars.buttons["设备"].tap()
         for title in ["设备","采集","佩戴","记录","设置"] { XCTAssertTrue(app.tabBars.buttons[title].exists) }
+        let head = app.buttons["bodyRole_head"], chest = app.buttons["bodyRole_thoracic_spine"]
+        XCTAssertTrue(head.exists); XCTAssertTrue(chest.exists)
+        XCTAssertEqual(head.frame.midX,chest.frame.midX,accuracy:2)
+        XCTAssertGreaterThan(head.frame.midX,app.frame.width*0.4)
+        XCTAssertLessThan(head.frame.midX,app.frame.width*0.6)
+        XCTAssertLessThan(head.frame.midY,chest.frame.midY)
+        XCTAssertGreaterThan(app.buttons["bodyRole_left_upper_arm"].frame.midX,app.buttons["bodyRole_right_upper_arm"].frame.midX)
         attach(app,"设备人体图")
+        head.tap(); XCTAssertTrue(app.navigationBars["头部"].waitForExistence(timeout:5))
         app.tabBars.buttons["采集"].tap()
         app.buttons["新建受试者任务"].tap()
         let dialog = app.alerts["新建匿名受试者任务"]
