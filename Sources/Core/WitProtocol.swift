@@ -15,6 +15,12 @@ public enum WitProtocol {
         guard [0x51,0x3a,0x2e,0x03,0x01,0x05,0x1f,0x23,0x24,0x63,0x72,0x96].contains(register) else { throw LabError.invalid("不支持的寄存器") }
         return Data([0xff,0xaa,0x27,UInt8(register),0])
     }
+    public static func command(_ register: Int, _ value: Int) throws -> Data {
+        guard (register == 0x69 && value == 0xb588) || (register == 0 && value == 0) ||
+              (register == 1 && value == 1) || (register == 3 && value == 8) || (register == 0x24 && value == 0) else { throw LabError.invalid("非白名单写指令") }
+        return Data([0xff,0xaa,UInt8(register),UInt8(value & 255),UInt8(value >> 8)])
+    }
+    public static func supportedFirmware(_ version: String) -> Bool { ["10080.1.21","10080.1.22"].contains(version) }
     public static func signed16(_ b: [UInt8], _ offset: Int) -> Int { Int(Int16(bitPattern: UInt16(b[offset]) | UInt16(b[offset+1]) << 8)) }
     public static func hex(_ b: Data) -> String { b.map { String(format: "%02X", $0) }.joined() }
     public static func unhex(_ text: String) throws -> Data {

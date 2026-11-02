@@ -12,7 +12,15 @@ for path in paths:
         for e in manifest['files']:
             raw=z.read(e['path']);assert len(raw)==e['bytes'] and hashlib.sha256(raw).hexdigest()==e['sha256']
         checklist=json.loads(z.read('export-checklist.json'));assert checklist['complete']
-        rows=json.loads(z.read('collection-index.json'))['records'];assert rows and not any(r['counted_for_slot'] for r in rows)
+        rows=json.loads(z.read('collection-index.json'))['records'];assert rows
+        if path.name=='diagnostic-export.zip':assert not any(r['counted_for_slot'] for r in rows)
+        if path.name=='formal-retry-export.zip':
+            assert len(rows)==3 and sum(r['counted_for_slot'] for r in rows)==1
+            assert {r['assignment']['slot_attempt'] for r in rows}=={1,2,3}
+            assert {r['assignment']['record_number'] for r in rows}=={1}
+            assert next(r for r in rows if r['counted_for_slot'])['assignment']['slot_attempt']==3
+            assert all('/action_01/slot_001/attempt_' in r['archive_path'] for r in rows)
+            assert {'operations.jsonl','roster-at-export.json','studies-at-export.json'} <= set(names)
         for row in rows:
             required=json.loads(z.read(row['archive_path']+'/file-integrity-at-export.json'))['required_files']
             assert all(row['archive_path']+'/'+n in names for n in required)

@@ -59,7 +59,7 @@ public final class StoredZIP {
 }
 public enum ArchiveExporter {
     public static let required = ["metadata.json","notifications.jsonl","samples.csv","relative_pose.csv","events.jsonl","summary.json"]
-    public static func export(sessions: URL, trials: [Trial], destination: URL, cancel: ExportCancellation, allTrials: [Trial]? = nil, progress: @escaping (Int, Int) -> Void) throws {
+    public static func export(sessions: URL, trials: [Trial], destination: URL, cancel: ExportCancellation, allTrials: [Trial]? = nil, attachments: [String:Data] = [:], progress: @escaping (Int, Int) -> Void) throws {
         guard !trials.isEmpty else { throw LabError.invalid("没有可导出的记录") }
         let zip = try StoredZIP(url: destination, cancellation: cancel), context = allTrials ?? trials
         var manifest: [[String: Any]] = [], records: [[String: Any]] = []; var issues = 0
@@ -87,6 +87,10 @@ public enum ArchiveExporter {
                 row["counted_for_slot"] = complete && trial.accepted && latest?.id == trial.id && book.accepted(action:a.action,slot:a.slot)
             }
             records.append(row); progress(index+1, trials.count)
+        }
+        for name in attachments.keys.sorted() {
+            guard ["roster-at-export.json","studies-at-export.json","operations.jsonl"].contains(name), let data = attachments[name] else { throw LabError.invalid("导出附件不在白名单") }
+            manifest.append(try zip.add(name:name,data:data))
         }
         manifest.append(try zip.add(name: "collection-index.json", data: JSONFile.bytes(["records":records])))
         manifest.append(try zip.add(name: "export-checklist.json", data: JSONFile.bytes(["complete":issues == 0,"issue_count":issues,"records":records,"scope":"文件完整性不等于测量有效性"])))

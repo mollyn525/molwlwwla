@@ -69,7 +69,7 @@ public struct PoseWindow {
     }
     public var mean: [Double] { (0..<3).map { i in samples.isEmpty ? 0 : samples.reduce(0) { $0+$1.acceleration[i] }/Double(samples.count) } }
     /// Specific failure conditions are retained, including cases missing in the Android r3 audit.
-    public func issues(now: UInt64, tolerance: Double = 0.08) -> [String] {
+    public func stabilityIssues(now: UInt64) -> [String] {
         var issues: [String] = []; let avg = mean
         if samples.count < 60 { issues.append("静态样本不足60帧") }
         if let first = samples.first, let last = samples.last {
@@ -78,7 +78,14 @@ public struct PoseWindow {
         } else { issues.append("没有惯性数据") }
         if samples.contains(where: { $0.speed >= 1 }) { issues.append("角速度达到1°/s") }
         if samples.contains(where: { sample in sqrt((0..<3).reduce(0) { sum,i in sum+pow(sample.acceleration[i]-avg[i],2) }) > 0.04 }) { issues.append("加速度相对窗口均值波动超过0.04g") }
-        if abs(avg[0]) > tolerance || abs(avg[1]) > tolerance || abs(avg[2]-1) > tolerance { issues.append("原始+Z参考姿态不满足门限") }
+        let norm = sqrt(avg.reduce(0) { $0+$1*$1 })
+        if norm < 0.9 || norm > 1.1 { issues.append("重力模长不在0.9–1.1g") }
+        if zip(samples,samples.dropFirst()).contains(where: { pair in pair.1.ns < pair.0.ns || pair.1.ns-pair.0.ns >= 200_000_000 }) { issues.append("静态窗口有200ms以上数据缺口") }
         return issues
+    }
+    public func issues(now: UInt64, tolerance: Double = 0.08) -> [String] {
+        var result = stabilityIssues(now: now); let avg = mean
+        if abs(avg[0]) > tolerance || abs(avg[1]) > tolerance || abs(avg[2]-1) > tolerance { result.append("原始+Z参考姿态不满足门限") }
+        return result
     }
 }

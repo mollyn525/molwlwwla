@@ -45,8 +45,11 @@ for case in fixture['cases']:
     for f in case['expected']['frames']:assert len(bytes.fromhex(f['hex']))==20 and len(f['words']) in (8,9)
 ble=(ROOT/'Sources/iOS/BluetoothEngine.swift').read_text(encoding='utf8')
 assert 'canSendWriteWithoutResponse' in ble and 'WitProtocol.read(reg)' in ble
-assert '0xb588' not in ble.lower() and 'placement_confirmed' not in ble
+operations=(ROOT/'Sources/iOS/EngineOperations.swift').read_text(encoding='utf8')
+assert 'guard !calibrate || placementConfirmed' in operations and 'WitProtocol.command(register,value)' in operations
+assert 'operation_tx_intent' in operations and 'supportedFirmware' in operations
+assert 'beginRecording' in (ROOT/'Sources/iOS/EngineCapture.swift').read_text(encoding='utf8')
 workflow=(ROOT/'.github/workflows/ios-build.yml').read_text(encoding='utf8')
 assert 'workflow_dispatch:' in workflow and 'secrets.' not in workflow
-result={'status':'passed','checks':'Swift delimiter structure, plist, project references, fixtures, read-only initial BLE boundary; NOT Swift compilation or test execution','swift_files_checked':len(swift),'java_oracle_cases':len(fixture['cases']),'expected_frames':sum(len(c['expected']['frames']) for c in fixture['cases']),'swift_tests_executed':False,'xcode_build_executed':False,'iphone_app_installed':False}
+result={'status':'passed','checks':'Swift delimiter structure, plist, project references, fixtures, guarded hardware write entry points; NOT Swift compilation or test execution','swift_files_checked':len(swift),'java_oracle_cases':len(fixture['cases']),'expected_frames':sum(len(c['expected']['frames']) for c in fixture['cases']),'swift_tests_executed':False,'xcode_build_executed':False,'iphone_app_installed':False}
 out=ROOT/'build';out.mkdir(exist_ok=True);(out/'source-validation.json').write_text(json.dumps(result,indent=2),encoding='utf8');print(json.dumps(result))

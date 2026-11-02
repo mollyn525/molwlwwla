@@ -1,18 +1,21 @@
 import Foundation
 
-public struct BodyRole: Identifiable, Codable {
+public struct BodyRole: Identifiable, Codable, Sendable {
     public let id: String, name: String
     public static let all: [BodyRole] = zip(
         ["head","thoracic_spine","pelvis","left_upper_arm","right_upper_arm","left_forearm","right_forearm","left_hand_dorsum","right_hand_dorsum","left_thigh","right_thigh","left_shank","right_shank","left_foot_dorsum","right_foot_dorsum"],
         ["头部","胸椎","骨盆","左大臂","右大臂","左小臂","右小臂","左手背","右手背","左大腿","右大腿","左小腿","右小腿","左足背","右足背"]).map { BodyRole(id: $0.0, name: $0.1) }
 }
-public struct SensorBinding: Codable {
+public struct SensorBinding: Codable, Sendable {
     public var peripheralID: String, name: String, wearConfirmed = false
     public var reference: [Double]?, referenceID: String?
+    // Optional additions preserve 0.1.x roster decoding. Legacy references are not formal references.
+    public var referenceStudyID: String?, referenceDiagnostic: Bool?, gravity: [Double]?, referenceMS: Int64?
+    public var movement: MovementReport?, wearNote: String?, wearConfirmedMS: Int64?, wearPendingMS: Int64?
     public init(peripheralID: String, name: String) { self.peripheralID = peripheralID; self.name = name }
 }
-public struct NameChange: Codable { public var wall_ms: Int64, before: [String], after: [String] }
-public struct Study: Identifiable, Codable {
+public struct NameChange: Codable, Sendable { public var wall_ms: Int64, before: [String], after: [String] }
+public struct Study: Identifiable, Codable, Sendable {
     public var id: String, subject: String, created_ms: Int64, actions: [String], name_history: [NameChange]
     public init(subject: String, at: Int64) throws {
         guard subject.range(of: "^[A-Za-z0-9_-]{1,40}$", options: .regularExpression) != nil else { throw LabError.invalid("匿名编号限1–40位字母、数字、下划线或短横线") }
@@ -50,10 +53,15 @@ public struct Trial: Codable, Identifiable, Sendable {
     public var reviewValid: Bool { reviews.enumerated().allSatisfy { $0.element.revision == $0.offset+1 && ["accepted","rejected"].contains($0.element.decision) && !$0.element.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
     public var accepted: Bool { !diagnostic && assignment != nil && qualityPassed && normalCompletion && status != "incomplete_process_exit" && reviewValid && (reviews.last?.decision ?? "accepted") == "accepted" }
     public mutating func markRetry(reason: String, revision: Int, at: Int64) throws {
+        try review(decision: "rejected", reason: reason, revision: revision, at: at)
+    }
+    public mutating func review(decision: String, reason: String, revision: Int, at: Int64) throws {
         guard !diagnostic, assignment != nil, reviewValid, revision == reviews.count else { throw LabError.invalid("记录状态已变化或属于诊断记录") }
+        guard ["accepted","rejected"].contains(decision) else { throw LabError.invalid("复核决定无效") }
+        guard decision != "accepted" || (qualityPassed && normalCompletion && status != "incomplete_process_exit") else { throw LabError.invalid("数据质量未通过，不能强制计为合格") }
         let clean = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, clean.count <= 500 else { throw LabError.invalid("请填写1–500字补录原因") }
-        reviews.append(Review(revision: revision+1, at: at, decision: "rejected", reason: clean))
+        reviews.append(Review(revision: revision+1, at: at, decision: decision, reason: clean))
     }
 }
 public struct SlotBook {
