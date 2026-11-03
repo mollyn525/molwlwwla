@@ -3,8 +3,8 @@
   "files": [
     {
       "path": ".github/workflows/ios-build.yml",
-      "bytes": 1435,
-      "sha256": "a41ea0fbe2c12a99acf8052edeecb6f86404d426d96f3cf0947961b3f306fb85"
+      "bytes": 1767,
+      "sha256": "a82ed5ccd7fa8f17f2291455bf9c799a80ce534002f679fd9d4cfa99f98c1565"
     },
     {
       "path": ".gitignore",

@@ -16,18 +16,32 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+      - name: Initialize selected Xcode for simulator services
+        timeout-minutes: 3
+        run: |
+          mkdir -p build
+          sudo xcode-select --switch "$DEVELOPER_DIR"
+          xcodebuild -runFirstLaunch > build/xcode-first-launch.log 2>&1 || { tail -n 80 build/xcode-first-launch.log; exit 1; }
       - name: Core tests and independent export verification
         timeout-minutes: 6
         run: bash tools/build_macos.sh core
       - name: Compile simulator app
         timeout-minutes: 8
         run: bash tools/build_macos.sh simulator
+      - name: Compile unsigned iPhone app
+        id: device
+        timeout-minutes: 6
+        run: bash tools/build_macos.sh device
+      - name: Unsigned app for local personal signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: baduanjin-ios-unsigned
+          path: build/output/*
+          if-no-files-found: error
+          retention-days: 7
       - name: Run simulator workflow tests
         timeout-minutes: 15
         run: bash tools/build_macos.sh ui
-      - name: Compile unsigned iPhone app
-        timeout-minutes: 6
-        run: bash tools/build_macos.sh device
       - name: Preserve build logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -40,11 +54,4 @@ jobs:
             build/*.xml
             build/test-artifacts/
             build/ui-screenshots/
-          retention-days: 7
-      - name: Unsigned app for local personal signing
-        uses: actions/upload-artifact@v4
-        with:
-          name: baduanjin-ios-unsigned
-          path: build/output/*
-          if-no-files-found: error
           retention-days: 7
