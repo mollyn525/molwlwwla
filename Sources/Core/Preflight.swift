@@ -35,10 +35,14 @@ public enum Preflight {
         let countOK = selected.count == 15 && connected.count == 15 && Set(connected.map(\.id)).count == 15
         add("device_count","","15台实际连接",countOK,"已选\(selected.count)台，已连接并就绪\(connected.count)/15台；扫描发现数量不算连接数量")
         let slow = selected.filter { !QualityPolicy.current.recentRatesPass($0.hz) }
-        let slowDetail = slow.map { d in
+        var slowDescriptions: [String] = []
+        for d in slow {
             let role = BodyRole.all.first { roster[$0.id]?.peripheralID == d.id }?.name
-            return (role ?? (d.name.isEmpty ? d.id:d.name))+"："+d.hz.prefix(2).map { String(format:"%.2fHz",$0) }.joined(separator:" / ")
-        }.joined(separator:"；")
+            let label = role ?? (d.name.isEmpty ? d.id:d.name)
+            let rates = d.hz.prefix(2).map { String(format:"%.2fHz",$0) }.joined(separator:" / ")
+            slowDescriptions.append(label+"："+rates)
+        }
+        let slowDetail = slowDescriptions.joined(separator:"；")
         add("inertial_rate","","加速度 / 角速度频率",countOK && slow.isEmpty,"每台近10秒平均接收率须各 >40 Hz，包含断流时间"+(slowDetail.isEmpty ? "":"；未通过："+slowDetail))
         var seen = Set<String>()
         for role in BodyRole.all {

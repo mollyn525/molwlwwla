@@ -54,6 +54,7 @@ struct RecordView: View {
     var body: some View {
         List {
             Section("本条结果") {
+                Text("导出ZIP包含示例格式TXT（27列），以及原始逐帧数据和各项来源时间。").font(.caption).foregroundStyle(.secondary)
                 Text(current.id).font(.caption)
                 if let d = detail { Text(d.subject+" · "+d.actionName); Text(String(format:"动作段 %.3f秒",d.duration)); Text("结束原因："+d.reason) }
                 Text(current.qualityPassed ? "数据质量通过":"数据质量未通过").foregroundStyle(current.qualityPassed ? .teal:.orange)

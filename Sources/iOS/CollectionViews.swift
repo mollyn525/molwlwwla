@@ -50,6 +50,7 @@ struct CollectionView: View {
         List {
             StatusBanner()
             Text("八个动作各15条，共120个固定编号。正常结束且数据质量通过后默认正常；发现问题再标记补录。")
+            Text("导出按动作、编号和尝试分类，每次均附示例格式TXT。").font(.caption).foregroundStyle(.secondary)
             Text("\(model.study?.subject ?? "无任务") · \(model.book.total)/120条合格").font(.headline)
             if let next = model.book.nextAction {
                 NavigationLink("继续正常采集") { ActionView(action:next,initialSlot:model.book.nextSlot(action:next,retry:false) ?? model.book.nextSlot(action:next,retry:true) ?? 1) }
@@ -97,18 +98,7 @@ struct ActionView: View {
             Text("第\(slot)/15条 · 下次第\((rows.last?.assignment?.slot_attempt ?? 0)+1)次尝试").font(.headline)
             Button("开始本条采集") { model.start(action:action,slot:slot) }.buttonStyle(.borderedProminent).disabled(!startAllowed).accessibilityIdentifier("formalStart")
             Text("频率要求：每台加速度、角速度各 >40 Hz，平均值包含断流时间。").font(.caption).foregroundStyle(.secondary)
-            if !startAllowed {
-                VStack(alignment:.leading,spacing:6) {
-                    Text("暂不能开始的原因").font(.headline).accessibilityIdentifier("formalBlockedReason")
-                    if model.book.accepted(action:action,slot:slot) { Text("本编号已有合格记录；需要重采时，先点“这条有问题，标记补录”。") }
-                    if model.book.nextAction != action {
-                        if let next = model.book.nextAction { Text("请先完成\(model.study?.actions[next] ?? "动作\(next+1)")的15条合格记录。") }
-                        else { Text("当前任务120条均已完成。") }
-                    }
-                    ForEach(model.preflight.blockers.prefix(3)) { row in Text(row.title+"："+row.detail).font(.footnote) }
-                    NavigationLink("查看原因与处理步骤") { PreflightView() }.accessibilityIdentifier("formalBlockedHelp")
-                }.foregroundStyle(.orange)
-            }
+            if !startAllowed { blockedStartDetails }
             RecordingControls()
             HStack {
                 Button("继续正常采集") { if let next = model.book.nextSlot(action:action,retry:false) { slot = next } }.disabled(model.busy || model.book.nextSlot(action:action,retry:false) == nil)
@@ -124,16 +114,31 @@ struct ActionView: View {
             Section("本条所有尝试") {
                 ForEach(rows.reversed()) { trial in NavigationLink { RecordView(trial:trial) } label: { Text("尝试\(trial.assignment?.slot_attempt ?? 0) · \(trial.accepted ? "已合格":"待补录")") } }
             }
-            Section("采前检查") {
-                Text(model.preflight.ready ? "开始条件已满足，可采集":"还有\(model.preflight.blockers.count)项开始条件未满足")
-                Text("另有\(model.preflight.reminders.count)项提醒，不阻止采集。佩戴、参考姿态与配置状态会随记录保存。").font(.footnote)
-                ForEach(model.preflight.blockers.prefix(8)) { row in VStack(alignment:.leading) { Text(row.title); Text(row.detail).font(.caption).foregroundStyle(.secondary) } }
-                NavigationLink("查看全部检查项与部位") { PreflightView() }
-            }
+            preflightSection
         }.buttonStyle(.borderless).navigationTitle(model.study?.actions[action] ?? "动作\(action+1)")
          .confirmationDialog("标记待补录，原始记录保留",isPresented:$retryLatest) {
              ForEach(["数据异常","动作做错","提前结束","绑带松动","其他原因"],id:\.self) { reason in Button(reason) { if let latest = rows.last { model.retry(latest,reason:reason) } } }
          }
+    }
+    private var blockedStartDetails: some View {
+        VStack(alignment:.leading,spacing:6) {
+            Text("暂不能开始的原因").font(.headline).accessibilityIdentifier("formalBlockedReason")
+            if model.book.accepted(action:action,slot:slot) { Text("本编号已有合格记录；需要重采时，先点“这条有问题，标记补录”。") }
+            if model.book.nextAction != action {
+                if let next = model.book.nextAction { Text("请先完成\(model.study?.actions[next] ?? "动作\(next+1)")的15条合格记录。") }
+                else { Text("当前任务120条均已完成。") }
+            }
+            ForEach(model.preflight.blockers.prefix(3)) { row in Text(row.title+"："+row.detail).font(.footnote) }
+            NavigationLink("查看原因与处理步骤") { PreflightView() }.accessibilityIdentifier("formalBlockedHelp")
+        }.foregroundStyle(.orange)
+    }
+    private var preflightSection: some View {
+        Section("采前检查") {
+            Text(model.preflight.ready ? "开始条件已满足，可采集":"还有\(model.preflight.blockers.count)项开始条件未满足")
+            Text("另有\(model.preflight.reminders.count)项提醒，不阻止采集。佩戴、参考姿态与配置状态会随记录保存。").font(.footnote)
+            ForEach(model.preflight.blockers.prefix(8)) { row in VStack(alignment:.leading) { Text(row.title); Text(row.detail).font(.caption).foregroundStyle(.secondary) } }
+            NavigationLink("查看全部检查项与部位") { PreflightView() }
+        }
     }
 }
 struct PreflightView: View {

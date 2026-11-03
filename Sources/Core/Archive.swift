@@ -76,6 +76,18 @@ public enum ArchiveExporter {
                 else if required.contains(name) { missing.append(name) }
             }
             let complete = missing.isEmpty; if !complete { issues += 1 }
+            if complete {
+                let temporary = destination.deletingLastPathComponent().appendingPathComponent("txt-work-"+UUID().uuidString,isDirectory:true)
+                try FileManager.default.createDirectory(at:temporary,withIntermediateDirectories:false)
+                defer { try? FileManager.default.removeItem(at:temporary) }
+                let meta = try JSONFile.read(folder.appendingPathComponent("metadata.json"))
+                let textName = VendorTXT.fileName(metadata:meta), sourceName = "source-times.csv"
+                let textURL = temporary.appendingPathComponent(textName), sourcesURL = temporary.appendingPathComponent(sourceName)
+                let format = try VendorTXT.write(session:folder,text:textURL,sources:sourcesURL,cancel:cancel)
+                manifest.append(try zip.add(name:prefix+"/TXT/"+textName,file:textURL))
+                manifest.append(try zip.add(name:prefix+"/TXT/"+sourceName,file:sourcesURL))
+                manifest.append(try zip.add(name:prefix+"/TXT/format.json",data:JSONFile.bytes(format)))
+            }
             let effective: [String: Any] = ["accepted":complete && trial.accepted,"quality_passed":complete && trial.qualityPassed,"status":trial.status,"review_revision":trial.reviews.count,"source":"immutable_summary_plus_review"]
             manifest.append(try zip.add(name: prefix+"/effective-result-at-export.json", data: JSONFile.bytes(effective)))
             manifest.append(try zip.add(name: prefix+"/file-integrity-at-export.json", data: JSONFile.bytes(["required_files":required,"missing_files":missing,"complete":complete])))

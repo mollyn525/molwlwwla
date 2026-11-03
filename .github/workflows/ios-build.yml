@@ -11,13 +11,23 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
-      - name: Build and verify without Apple credentials
-        run: bash tools/build_macos.sh
+      - name: Core tests and independent export verification
+        timeout-minutes: 6
+        run: bash tools/build_macos.sh core
+      - name: Compile simulator app
+        timeout-minutes: 8
+        run: bash tools/build_macos.sh simulator
+      - name: Run simulator workflow tests
+        timeout-minutes: 8
+        run: bash tools/build_macos.sh ui
+      - name: Compile unsigned iPhone app
+        timeout-minutes: 6
+        run: bash tools/build_macos.sh device
       - name: Preserve build logs
         if: always()
         uses: actions/upload-artifact@v4

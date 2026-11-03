@@ -182,7 +182,11 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         guard !passive, d.wanted && d.connected && d.subscribed && !d.closing, let c = d.writer else { return false }
         if d.control != nil || !d.controls.isEmpty { return pumpControl(d,now) }
         if d.reading != nil {
-            if now-d.readAt >= 2*secondNS { fail(d,String(format:"寄存器0x%02X回读超时",d.reading!)); d.reading = nil }
+            if now-d.readAt >= 2*secondNS {
+                if d.reading == 0x72 { log(d,"磁场类型读取超时，TXT中磁场uT将留空；继续惯性初始化") }
+                else { fail(d,String(format:"寄存器0x%02X回读超时",d.reading!)) }
+                d.reading = nil
+            }
             return false
         }
         guard !d.maintenance else { return false }
@@ -278,7 +282,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         guard let d = links[peripheral.identifier], d.wanted && d.connected && !d.closing, characteristic === d.notifier else { return }
         guard error == nil, characteristic.isNotifying else { fail(d,"订阅通知失败：\(detail(error))"); return }
         log(d,"通知订阅成功")
-        d.subscribed = true; d.status = "读取固件与配置"; d.reads = [0x2e,0x03,0x23,0x24,0x96]; d.reading = nil
+        d.subscribed = true; d.status = "读取固件与配置"; d.reads = [0x2e,0x03,0x23,0x24,0x72,0x96]; d.reading = nil
     }
     func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) { links[peripheral.identifier]?.writeReadyCallbacks += 1 /* Fair timer resumes writes; this is not a firmware acknowledgement. */ }
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {

@@ -55,7 +55,7 @@ extension BluetoothEngine {
                 "app_build":Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "unknown",
                 "system_version":ProcessInfo.processInfo.operatingSystemVersionString,"identity_kind":"corebluetooth_uuid_not_mac",
                 "diagnostic":diagnostic,"action_acceptance_policy":"default_normal_if_quality_passed","logic_profile":WitProtocol.profile,
-                "recorded_ms":Self.wall(),"roster":try JSONSerialization.jsonObject(with:JSONEncoder().encode(roster)),
+                "recorded_ms":Self.wall(),"time_zone_offset_seconds":TimeZone.current.secondsFromGMT(),"roster":try JSONSerialization.jsonObject(with:JSONEncoder().encode(roster)),
                 "internal_sampling_synchronization_verified":false,"sampling_clock":"phone_receive_monotonic_not_sensor_sampling","host_query_hz":queryHz,
                 "relative_pose_method":"conjugate_normalized_reference_times_normalized_current; neutral_reference_not_anatomical_frame"]
             meta["devices"] = selected.map { id,d in ["address":id.uuidString,"name":d.name,"firmware":d.firmware,"settings":Dictionary(uniqueKeysWithValues:d.settings.map { (String($0.key),$0.value) })] as [String:Any] }
