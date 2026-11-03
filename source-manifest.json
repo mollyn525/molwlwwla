@@ -173,8 +173,8 @@
     },
     {
       "path": "tools/build_macos.sh",
-      "bytes": 2292,
-      "sha256": "d9fa486ae305677e57634462b1c1f6a986177a8145a04c796246b75776e11d58"
+      "bytes": 2288,
+      "sha256": "aa11246d9cfd302f72b37400e05d4dfa33dbed9229410ab856319b63a5a276b3"
     },
     {
       "path": "tools/check_test_exports.py",
@@ -200,6 +200,11 @@
       "path": "tools/package_unsigned.py",
       "bytes": 1182,
       "sha256": "733973ca0be6ff25a7f6d0d58e46165eab36b4108d83cd426be493ba23a9eb06"
+    },
+    {
+      "path": "tools/prepare_simulator.py",
+      "bytes": 1400,
+      "sha256": "caa414101a4f6109ee5955f9e33aaadca36ac0a569c22c10100922250f29e69c"
     },
     {
       "path": "tools/ProtocolOracle.java",
