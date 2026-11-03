@@ -25,11 +25,13 @@ struct SettingsView: View {
             Section("硬件加速度校准") {
                 NavigationLink("查看加速度校准结果") { CalibrationResultsView() }.accessibilityIdentifier("calibrationResults")
                 Text("佩戴前，按机身坐标标识让原始Z正向朝上（约+1g），放在水平稳定台面，至少放稳3秒；不能按外壳“正面”判断。")
-                Text("当前选中\(selectedCount)台，通常每台16–20秒；遇短暂停顿，保存前后各最多延长8秒。请按每台约40秒预留，全组约\(max(1,Int(ceil(Double(selectedCount)*40/60))))分钟，直到批次结束都保持不动。").font(.footnote)
-                Button("已按原始+Z朝上放稳，准备校准") { calibrate = true }.disabled(model.busy || selectedCount == 0)
+                Text("当前选中\(selectedCount)台，校准过程并行进行，每台独立复核和保存，单台失败不影响其他设备。全组通常约20–40秒，请预留1分钟，直到批次结束都保持不动。").font(.footnote).accessibilityIdentifier("parallelCalibrationExplanation")
+                Button("一起校准选中的 \(selectedCount) 台") { calibrate = true }.disabled(model.busy || selectedCount == 0).accessibilityIdentifier("parallelCalibrationStart")
                 Text("短暂停顿后等待数据恢复，重新取得约3秒完整稳定窗口再复核。明显运动、500ms以上间隙或断线仍会停止该台；不会重复发送启动校准。结果可随时通过上方按钮查看。").font(.caption).foregroundStyle(.secondary)
                 NavigationLink("查看逐台配置 / 校准结果") { OperationResultsView() }
+                Text("蓝牙指令仍依次提交，不代表硬件同步启动。离开前台、蓝牙整体不可用、用户取消或共同审计故障会停止整个批次。").font(.caption).foregroundStyle(.secondary)
             }
+            if model.engineState.parallelCalibration { CalibrationProgressSection() }
             Section("独立版本 \(model.version)") {
                 NavigationLink("连接诊断 / 导出日志") { ConnectionLogView() }
                 Text("保留本App现有任务、绑定与历史数据；ZIP通过系统分享或“文件”保存。")
@@ -39,8 +41,23 @@ struct SettingsView: View {
          .confirmationDialog("应用50Hz / 九轴配置",isPresented:$configure) { Button("对选中设备应用并回读") { model.batch(calibrate:false) } } message: { Text("只修改不符合模板的设备，逐台独立记录结果，保留安装方向。") }
          .confirmationDialog("重新写入配置模板",isPresented:$rewrite) { Button("重新写入并保存") { model.batch(calibrate:false,rewrite:true) } } message: { Text("即使旧值已符合，也会重新写入50Hz和九轴设置并保存；安装方向保留。") }
          .confirmationDialog("确认姿态与保持时长",isPresented:$calibrate) {
-            Button("确认全部原始+Z朝上，开始校准") { model.batch(calibrate:true,placementConfirmed:true) }
-         } message: { Text("此操作会修改硬件校准。确认选中\(selectedCount)台原始Z正向朝上、已放稳至少3秒，点击后全组继续保持约\(max(1,Int(ceil(Double(selectedCount)*40/60))))分钟，直到提示批量操作结束。短暂停顿会等待恢复；不会自动重新启动校准。") }
+            Button("确认全部原始+Z朝上，一起开始") { model.batch(calibrate:true,placementConfirmed:true) }
+         } message: { Text("此操作会修改硬件校准。确认选中\(selectedCount)台原始Z正向朝上、已放稳至少3秒，点击后一起校准，全组保持约1分钟，直到提示批次结束。每台独立等待、复核、保存；单台失败不影响其他设备，不自动重新启动校准。") }
+    }
+}
+struct CalibrationProgressSection: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        Section("本次并行校准 · 每台独立处理") {
+            ForEach(model.engineState.operationProgress) { item in
+                VStack(alignment:.leading,spacing:4) {
+                    Text(item.name).font(.headline)
+                    Text(item.finished ? (item.passed ? "保存后静态复核通过":"该台已结束，查看原因") : "进行中").foregroundStyle(item.finished ? (item.passed ? .teal:.orange):.secondary)
+                    Text(item.message).font(.footnote)
+                    Text(item.saveSubmitted ? "本台已提交保存":"本台尚未提交保存").font(.caption)
+                }.accessibilityIdentifier("parallelProgress_"+item.id)
+            }
+        }
     }
 }
 struct CalibrationResultsView: View {
@@ -49,6 +66,7 @@ struct CalibrationResultsView: View {
     var body: some View {
         List {
             StatusBanner()
+            if model.engineState.parallelCalibration { CalibrationProgressSection() }
             Section {
                 Text("共\(results.count)次 · 保存后静态复核通过\(results.filter(\.passed).count)次").font(.headline)
                 Text("按时间从新到旧保留每次尝试。点击设备查看校准前后读数与未通过原因。").font(.caption)

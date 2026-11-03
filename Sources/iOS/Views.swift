@@ -24,7 +24,7 @@ struct StatusBanner: View {
         Text(model.engineState.message).font(.subheadline)
         Text(model.engineState.freeBytes >= 0 ? String(format:"可用 %.2f GiB · 待写 %d项",Double(model.engineState.freeBytes)/1073741824,model.engineState.queuedWrites):"存储检查中").font(.caption).foregroundStyle(.secondary)
         if model.engineState.queuedWrites >= 2000 { Text("写盘积压较高，异常会保留并影响质量判定").font(.caption).foregroundStyle(.orange) }
-        if model.engineState.batch { Text(model.engineState.batchMessage).foregroundStyle(.orange); Button("停止后续操作"){model.engine.cancelBatch()} }
+        if model.engineState.batch { Text(model.engineState.batchMessage).foregroundStyle(.orange); Button(model.engineState.parallelCalibration ? "停止本批全部校准":"停止后续操作"){model.engine.cancelBatch()} }
         if model.engineState.movement { Button("取消本次佩戴检查"){model.engine.stopWearing()} }
         if model.exporting { ProgressView(model.exportProgress); Button("取消导出",role:.cancel){model.cancelExport()} }
     }.frame(maxWidth:.infinity,alignment:.leading).padding(.vertical,8) }

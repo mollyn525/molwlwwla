@@ -84,4 +84,24 @@ final class WorkflowUITests: XCTestCase {
     private func attach(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot:app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
+    func testParallelCalibrationShowsIndependentLiveDeviceStates() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages","(zh-Hans)","-AppleLocale","zh_CN","--parallel-calibration-ui-fixture"]
+        addUIInterruptionMonitor(withDescription:"System Bluetooth prompt") { alert in
+            for title in ["允许","Allow","好","OK"] where alert.buttons[title].exists { alert.buttons[title].tap(); return true }
+            return false
+        }
+        app.launch(); XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout:15)); app.tabBars.buttons["设置"].tap()
+        let results = app.buttons["calibrationResults"]
+        for _ in 0..<6 { if results.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(results.isHittable); results.tap()
+        XCTAssertTrue(app.buttons["停止本批全部校准"].waitForExistence(timeout:5))
+        XCTAssertTrue(app.staticTexts["保存后静态复核通过"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["该设备断线；其他设备继续"].exists)
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts["保持不动，独立等待保存"].firstMatch.exists)
+        attach(app,"并行校准逐台独立状态（模拟数据）")
+        app.terminate()
+    }
 }

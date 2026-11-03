@@ -32,6 +32,15 @@ import BaduanjinCore
         } catch { self.error = "读取本App记录失败：\(error.localizedDescription)；请先导出文件核查" }
         engine.onSnapshot = { [weak self] state in
             guard let self else { return }; self.engineState = state
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--parallel-calibration-ui-fixture") {
+                self.engineState.batch = true; self.engineState.parallelCalibration = true
+                self.engineState.batchMessage = "并行校准：2/15台结束 · 通过1台；请保持全组不动"
+                self.engineState.operationProgress = (0..<15).map { i in
+                    OperationProgress(id:"UI_PARALLEL_\(i)",name:"模拟设备\(i+1)",message:i == 0 ? "保存后静态复核通过":i == 1 ? "该设备断线；其他设备继续":"保持不动，独立等待保存",finished:i < 2,passed:i == 0,saveSubmitted:i == 0)
+                }
+            }
+            #endif
             for d in state.devices where d.connected {
                 var values = self.trend[d.id] ?? []; values.append(d.acceleration); if values.count > 120 { values.removeFirst(values.count-120) }; self.trend[d.id] = values
                 var history = self.otherTrends[d.id] ?? [:]

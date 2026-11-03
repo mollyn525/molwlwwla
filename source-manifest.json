@@ -3,8 +3,8 @@
   "files": [
     {
       "path": ".github/workflows/ios-build.yml",
-      "bytes": 1434,
-      "sha256": "c90bc96803b47976db991152dbd50e38edc2355172acbbec073692380be1711a"
+      "bytes": 1435,
+      "sha256": "2992a8309ce3c58ee7bed71592a9e1684a51cb317ef07163dacbbb88866fa3c0"
     },
     {
       "path": ".gitignore",
@@ -24,7 +24,7 @@
     {
       "path": "Info.plist",
       "bytes": 1156,
-      "sha256": "5866444863045dba820aec76a54d01bf79b86a9aa228521a9ce9593f35908467"
+      "sha256": "4a1809716f4a64fe8a9eb8911147aeba9b42f54609ce118b461380c2d4dd2795"
     },
     {
       "path": "Package.swift",
@@ -33,8 +33,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 2243,
-      "sha256": "3f8210becdb1286f5e00c3c2c60675520689bdf3106bcddef2a82c80e15746db"
+      "bytes": 3095,
+      "sha256": "a0ab8a50dedc0d481ac0dc4dae74104b54f8384df4cb534fbb01d5be5f5a1600"
     },
     {
       "path": "Sources/Core/Archive.swift",
@@ -52,6 +52,11 @@
       "sha256": "4124b5aaab62fe2e2a2456c40779fd3fc201c9572af9ebfe342c75bce1a95327"
     },
     {
+      "path": "Sources/Core/OperationJournal.swift",
+      "bytes": 1265,
+      "sha256": "fc70b590009c0d2ac1e12a4b49e32c6e039e523408fac2cf8527aa349bba3fd2"
+    },
+    {
       "path": "Sources/Core/OperationResult.swift",
       "bytes": 2708,
       "sha256": "4b65eee2d3181c4f5094994f03123800d02a028638469cef59e94bb157cfe381"
@@ -60,6 +65,11 @@
       "path": "Sources/Core/Operations.swift",
       "bytes": 6885,
       "sha256": "400923c3a52cac3eab936d0f8ea89015e13e28a0f3c2741fd8071fd3ed0199d4"
+    },
+    {
+      "path": "Sources/Core/ParallelCalibration.swift",
+      "bytes": 2862,
+      "sha256": "66127586e80a7ce6eafe819c57c3d681bdec22754f386e41dfe9850d5326b870"
     },
     {
       "path": "Sources/Core/Preflight.swift",
@@ -93,8 +103,8 @@
     },
     {
       "path": "Sources/iOS/AppModel.swift",
-      "bytes": 12957,
-      "sha256": "991a091a593228358305b6a6f6351e45376ee8f8f2c94e06f0c9ea0b41a7e655"
+      "bytes": 13685,
+      "sha256": "f2ec7fe6e0a3c28ca106dfbeaad6a3ec4ec094fafdcbf375d8c79be341e06ce0"
     },
     {
       "path": "Sources/iOS/BaduanjinApp.swift",
@@ -103,8 +113,8 @@
     },
     {
       "path": "Sources/iOS/BluetoothEngine.swift",
-      "bytes": 29759,
-      "sha256": "0239ae888a22e4e75f7e53300feb79440e48ea46f40ab1dcf2350a84f112b13a"
+      "bytes": 30631,
+      "sha256": "2cdedcfe07d275e23379a30d826a9d3974bb2316c45e4093e4f287f62e6ff5f6"
     },
     {
       "path": "Sources/iOS/BodyMapView.swift",
@@ -123,8 +133,8 @@
     },
     {
       "path": "Sources/iOS/EngineOperations.swift",
-      "bytes": 18212,
-      "sha256": "21e62019888795ae460ae25d0f889daf67415f122bac89dd830b5d1f85504cb3"
+      "bytes": 23586,
+      "sha256": "6783fa7e6b9970fa26cf3df4ee3789c7728bbfa6274ecc7244ecbe4b1f3651c3"
     },
     {
       "path": "Sources/iOS/EngineWearing.swift",
@@ -133,8 +143,8 @@
     },
     {
       "path": "Sources/iOS/MaintenanceViews.swift",
-      "bytes": 9823,
-      "sha256": "892787709bca88c208ecd5b8a2419a064e7b45a90272f30785b3014aba1d7b9d"
+      "bytes": 11141,
+      "sha256": "67c34e938cd18406ea0b4b1e3e03c99a3dfceaa5aad768afb7e05c8e9a2a107a"
     },
     {
       "path": "Sources/iOS/RecordDetail.swift",
@@ -148,8 +158,8 @@
     },
     {
       "path": "Sources/iOS/Views.swift",
-      "bytes": 11837,
-      "sha256": "009e3b168efb00487638dca7f9352e43fb366c2e7d5b2748e3f2315b6284d7b3"
+      "bytes": 11904,
+      "sha256": "f6b7103259e9330818834c872edf16f8257209e0ea0120a0b6b69b7de5b2fdcb"
     },
     {
       "path": "Sources/iOS/WearingViews.swift",
@@ -170,6 +180,11 @@
       "path": "Tests/Fixtures/protocol-vectors.json",
       "bytes": 282222,
       "sha256": "e3c1e84dd110621560a3b6dbe0bb423d306c31aa0635d2249d90ddb82c761bde"
+    },
+    {
+      "path": "Tests/ParallelCalibrationTests.swift",
+      "bytes": 10292,
+      "sha256": "bcb9e3306233c5c283c3a91bd01c9e0d564675f92f139f9bcbe9daae9f83068c"
     },
     {
       "path": "Tests/ParityTests.swift",
@@ -228,8 +243,8 @@
     },
     {
       "path": "UITests/WorkflowUITests.swift",
-      "bytes": 5334,
-      "sha256": "6e506ce8cb311c86be47b89ce78fde9156bde4c1ccbd204fe00df43f67325c30"
+      "bytes": 6654,
+      "sha256": "019387d6de023ce93eab52736c9ec683ee385c681af4b5da453656d7fb2323d4"
     }
   ]
 }

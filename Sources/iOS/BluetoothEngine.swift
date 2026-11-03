@@ -18,6 +18,10 @@ struct EngineSnapshot {
     var batch = false, movement = false, batchMessage = "未执行批量操作", queryHz = 90, passive = false
     var recordingDiagnostic = true, recordNumber: Int?, recordAttempt: Int?
     var operationResults: [String] = []
+    var parallelCalibration = false, operationProgress: [OperationProgress] = []
+}
+struct OperationProgress: Identifiable {
+    let id: String, name: String, message: String, finished: Bool, passed: Bool, saveSubmitted: Bool
 }
 /// All CoreBluetooth state and parsing live on one queue; UI receives immutable snapshots.
 /// Hardware writes use guarded, audited operation flows; routine acquisition only reads.
@@ -46,7 +50,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     var connectionLog: [String] = []
     var root: URL?, lastStorage: UInt64 = 0, lastHealth: UInt64 = 0, freeBytes: Int64 = -1
     var queryHz = 90, passive = false, passiveEnd: UInt64 = 0
-    var batch: BatchState?, calibration: CalibrationController?, operationResults: [String] = []
+    var batch: BatchState?, operationResults: [String] = []
     var movementRole: String?, movementEnd: UInt64 = 0, movementWindows: [String:MovementWindow] = [:]
     var movementRoster: [String:SensorBinding] = [:], referencePending = false
     var referenceGeneration = UUID()
@@ -117,6 +121,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     func fail(_ d: Link, _ reason: String) {
         guard !d.closing else { return }
         d.lastError = reason; d.status = reason; d.closing = true
+        failOperation(d.peripheral.identifier,reason+"；仅结束该设备操作")
         log(d,reason); central.cancelPeripheralConnection(d.peripheral)
     }
     func finish(reason: String, at: UInt64, userEnded: Bool = false) {
@@ -168,7 +173,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
                 }
             }
         }
-        if now-lastHealth >= 50_000_000 { updateHealth(now); lastHealth = now }
+        if now-lastHealth >= 50_000_000 { serviceOperations(now); updateHealth(now); lastHealth = now }
         if movementEnd > 0 && now >= movementEnd { finishMovement() }
         if writer != nil {
             if actionNS == 0 && now-startNS >= 3*secondNS { actionNS = now; for id in targets { links[id]?.trialStreams = (0..<4).map { _ in TrialStream(start: now) } }; event(nil,"action_start") }
@@ -204,6 +209,13 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         snapshot.timestamp = now; snapshot.freeBytes = freeBytes; snapshot.queuedWrites = writer?.status().queued ?? 0; snapshot.storedBytes = writer?.status().storedBytes ?? 0
         snapshot.batch = batch != nil; snapshot.movement = movementRole != nil || referencePending; snapshot.batchMessage = batch?.message ?? "批量操作已结束"; snapshot.queryHz = queryHz; snapshot.passive = passive
         snapshot.operationResults = operationResults; snapshot.recordingDiagnostic = recordingDiagnostic; snapshot.recordNumber = recordingAssignment?.record_number; snapshot.recordAttempt = recordingAssignment?.slot_attempt
+        snapshot.parallelCalibration = batch?.calibrate == true
+        if let b = batch {
+            snapshot.operationProgress = b.order.compactMap { id in
+                guard let op = b.operations[id] else { return nil }
+                return OperationProgress(id:op.id,name:op.name,message:op.message,finished:op.finished,passed:op.passed,saveSubmitted:op.report["save_submitted"] as? Bool == true)
+            }
+        }
         snapshot.countdown = writer != nil && actionNS == 0 ? max(1,3-Int((now-startNS)/secondNS)) : 0
         snapshot.elapsed = writer != nil && actionNS > 0 ? Double(now-actionNS)/1e9 : 0; snapshot.message = message
         snapshot.found = Dictionary(uniqueKeysWithValues: found.map { ($0.key.uuidString,$0.value) })
@@ -255,7 +267,9 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     func disconnected(_ peripheral: CBPeripheral, _ error: Error?) {
         guard let d = links[peripheral.identifier], d.peripheral === peripheral else { return }
         if movementRole != nil, movementRoster.values.contains(where: { $0.peripheralID == peripheral.identifier.uuidString }) { cancelWearing("引导动作中部位断线，本次证据不足，请重新检查") }
-        d.generation = UUID(); d.goodSince = 0; d.disconnectedAt = Self.now(); failControls(d,"连接已断开，旧操作不能跨重连继续")
+        d.generation = UUID(); d.goodSince = 0; d.disconnectedAt = Self.now()
+        failOperation(peripheral.identifier,"该设备断线，旧操作不能跨重连继续；其他设备继续")
+        failControls(d,"连接已断开，旧操作不能跨重连继续")
         if writer != nil && targets.contains(peripheral.identifier) { fault = true; event(d,"disconnected \(error?.localizedDescription ?? "连接结束")") }
         if d.wanted && !d.closing { d.lastError = "连接中断：\(detail(error))" }
         log(d,"连接结束：\(detail(error))；最近失败=\(d.lastError)")
@@ -291,7 +305,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         guard error == nil else { fail(d,"接收通知失败：\(detail(error))"); return }
         guard let bytes = characteristic.value else { return }
         let ns = Self.now(), wall = Self.wall(); writer?.raw(id:peripheral.identifier.uuidString,ns:ns,wall:wall,data:bytes)
-        if let b = batch, b.current == peripheral.identifier { operationRaw(d,bytes,ns) }
+        if batch?.operations[peripheral.identifier]?.active == true { operationRaw(d,bytes,ns) }
         for frame in d.parser.accept(bytes) {
             writer?.frame(id:peripheral.identifier.uuidString,ns:ns,wall:wall,frame:frame,verified:d.registers[0x96] == 0)
             var indices: [Int] = []
