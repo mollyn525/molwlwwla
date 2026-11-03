@@ -13,10 +13,17 @@ final class CalibrationRecoveryTests: XCTestCase {
         let result = run(p)
         XCTAssertTrue(result.0,result.1)
         XCTAssertEqual(p.writes.map { $0.1 },[0x69,1,0])
-        XCTAssertGreaterThanOrEqual(p.saveAt!-p.startAt!,12400)
-        XCTAssertLessThan(p.saveAt!-p.startAt!,14000)
+        XCTAssertGreaterThanOrEqual(p.saveAt!-p.startAt!,13700)
+        XCTAssertLessThan(p.saveAt!-p.startAt!,15000)
         XCTAssertTrue(p.phases.contains("recovering_before_save")); XCTAssertEqual(p.readbacks,1)
-        XCTAssertEqual(p.resets,1)
+        XCTAssertEqual(p.resets,2)
+    }
+    func testGapWithCalibrationOutputStepDoesNotMixOldAndNewMeans() {
+        let p = RecoveryPort(offsetStep:true); p.startGaps = [9500..<9740]
+        let result = run(p)
+        XCTAssertTrue(result.0,result.1); XCTAssertTrue(p.phases.contains("recovering_before_save"))
+        XCTAssertEqual(p.writes.map { $0.1 },[0x69,1,0])
+        XCTAssertEqual(p.pose.mean[1],0,accuracy:1e-9)
     }
     func testPostSaveGapRequiresNewStableWindowWithoutAnotherSave() {
         let p = RecoveryPort(); p.saveGaps = [2200..<2460]
@@ -109,7 +116,11 @@ private final class RecoveryPort: CalibrationPort {
     var startGaps: [Range<UInt64>] = [], saveGaps: [Range<UInt64>] = []
     var repeatedGaps = false, repeatedPostGaps = false, motionAt: UInt64?
     var readbackOK = true, readbackDelay: UInt64 = 0, readbacks = 0, resets = 0
-    init() { for i in 0...150 { pose.add(ns:UInt64(i)*20_000_000,acceleration:[0,0,1],gyro:[0,0,0]) } }
+    let offsetStep: Bool
+    init(offsetStep: Bool = false) {
+        self.offsetStep = offsetStep
+        for i in 0...150 { pose.add(ns:UInt64(i)*20_000_000,acceleration:[0,offsetStep ? 0.06:0,1],gyro:[0,0,0]) }
+    }
     func later(_ ms: UInt64, _ action: @escaping () -> Void) { sequence += 1; events.append((nowMS+ms,sequence,action)) }
     func stableIssues(beforeSave: Bool) -> [String] { pose.issues(now:nowMS*1_000_000,tolerance:0.08) }
     func recoveryCheck() -> CalibrationCheck {
@@ -140,8 +151,9 @@ private final class RecoveryPort: CalibrationPort {
                 || saveAt != nil && (saveGaps.contains { $0.contains(savedElapsed) } || (repeatedPostGaps && savedElapsed >= 1000 && savedElapsed%1000 < 220))
             if !skip {
                 let gyro = [0.0,motionAt == elapsed ? 2:0,0]
-                pose.add(ns:nowMS*1_000_000,acceleration:[0,0,1],gyro:gyro)
-                monitor?.add(nowMS*1_000_000,acceleration:[0,0,1],gyro:gyro)
+                let acc = [0.0,offsetStep && (startAt == nil || elapsed < 9740) ? 0.06:0,1]
+                pose.add(ns:nowMS*1_000_000,acceleration:acc,gyro:gyro)
+                monitor?.add(nowMS*1_000_000,acceleration:acc,gyro:gyro)
             }
             while true {
                 events.sort { $0.0 == $1.0 ? $0.1 < $1.1 : $0.0 < $1.0 }

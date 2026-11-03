@@ -3,7 +3,8 @@ import Foundation
 /// Only missing/recovering window evidence may wait. Motion and persistent stream loss never clear.
 public struct CalibrationCheck {
     public var pending: [String], failures: [String]
-    public init(pending: [String] = [], failures: [String] = []) { self.pending = pending; self.failures = failures }
+    public var restartWindow: Bool
+    public init(pending: [String] = [], failures: [String] = [], restartWindow: Bool = false) { self.pending = pending; self.failures = failures; self.restartWindow = restartWindow }
 }
 
 /// A write completion here means local submission and settling, never firmware acknowledgement.
@@ -55,7 +56,12 @@ public final class CalibrationController {
         if !check.pending.isEmpty {
             guard port.nowMS < deadline else { end(false,prefix+"等待数据恢复及完整稳定窗口超过8秒："+check.pending.joined(separator:"；")); return }
             let name = afterSave ? "recovering_after_save":"recovering_before_save"
-            if recoveryPhase != name { recoveryPhase = name; port.phase(name) }
+            if recoveryPhase != name || check.restartWindow {
+                recoveryPhase = name; port.phase(name)
+                // Do not mix samples from before/after a calibration-related output step.
+                // Only the recent verification window resets; the full-operation monitor and deadline do not.
+                port.resetVerificationWindow()
+            }
             port.later(min(200,deadline-port.nowMS)) { [self] in inspectWindow(afterSave:afterSave,deadline:deadline) }
             return
         }

@@ -127,7 +127,12 @@ public struct PoseWindow {
     public func calibrationCheck(now: UInt64, tolerance: Double = 0.05) -> CalibrationCheck {
         var codes = issueCodes(now:now); let avg = mean
         if !samples.isEmpty && (abs(avg[0]) > tolerance || abs(avg[1]) > tolerance || abs(avg[2]-1) > tolerance) { codes.append(.pose) }
-        return CalibrationCheck(pending:codes.filter(\.recoverable).map(\.rawValue),failures:codes.filter { !$0.recoverable }.map(\.rawValue))
+        let restart = codes.contains(.gap) || codes.contains(.stale)
+        // A mean spanning a receive gap may mix pre/post-calibration output levels.
+        // Rebuild that window; gyro and the whole-operation displacement/gap checks remain fatal.
+        let pending = codes.filter { $0.recoverable || (restart && $0 == .deviation) }
+        let failures = codes.filter { !$0.recoverable && !(restart && $0 == .deviation) }
+        return CalibrationCheck(pending:pending.map(\.rawValue),failures:failures.map(\.rawValue),restartWindow:restart)
     }
     public func issues(now: UInt64, tolerance: Double = 0.08) -> [String] {
         var result = stabilityIssues(now: now); let avg = mean

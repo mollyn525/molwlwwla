@@ -58,8 +58,8 @@
     },
     {
       "path": "Sources/Core/Operations.swift",
-      "bytes": 6485,
-      "sha256": "dff78b40f0a2e9a8e9636c5121f0d3c2054f6a383d443290552c51404694951a"
+      "bytes": 6885,
+      "sha256": "400923c3a52cac3eab936d0f8ea89015e13e28a0f3c2741fd8071fd3ed0199d4"
     },
     {
       "path": "Sources/Core/Preflight.swift",
@@ -68,8 +68,8 @@
     },
     {
       "path": "Sources/Core/Quality.swift",
-      "bytes": 8917,
-      "sha256": "624028fee0ee3b47248ee2ce00e24786c10552c8f28810a7bc13ae1fac6150be"
+      "bytes": 9325,
+      "sha256": "f4727d65da9a34e36ad64d3c18df7f27a4862001a9801056a4a2fe76fed753f1"
     },
     {
       "path": "Sources/Core/Study.swift",
@@ -158,8 +158,8 @@
     },
     {
       "path": "Tests/CalibrationRecoveryTests.swift",
-      "bytes": 9048,
-      "sha256": "da191251dd55386b54cbb171193816e0d915568e7e85dc4fbfdfe57374fb2413"
+      "bytes": 9640,
+      "sha256": "af05239aa7f4e6e2f3410f88bdb2739f9189d1f018714d30d044d5731d4da4c3"
     },
     {
       "path": "Tests/CoreTests.swift",
