@@ -228,8 +228,8 @@
     },
     {
       "path": "tools/prepare_simulator.py",
-      "bytes": 1486,
-      "sha256": "26c13ec7bec767909dda2aba68fa6d6ce01a96e784f97f0373eed5ac6a7423c4"
+      "bytes": 2513,
+      "sha256": "5fe98cc395256a6c7485681750be336e5c5859272837bc2feafb6d5487040aa5"
     },
     {
       "path": "tools/ProtocolOracle.java",
