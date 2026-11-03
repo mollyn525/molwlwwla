@@ -9,6 +9,7 @@ struct WearingView: View {
         List {
             StatusBanner()
             Section("本次佩戴核验") {
+                Text("本页项目属于提醒，未完成也可开始正式采集。没有当前任务的有效参考时，只保存原始数据，不生成对应相对姿态。").font(.footnote).foregroundStyle(.secondary)
                 Text("1 核对设备编号、贴附点、方向和松紧\n2 保持中立站姿，双臂自然下垂、双脚平放\n3 每个部位做5秒引导动作\n4 记录人工确认")
                 Button("采集15部位完整参考姿态") { referenceMode = 0 }.disabled(model.busy || model.study == nil)
                 Button("诊断：仅采集已连接的绑定部位") { referenceMode = 1 }.disabled(model.busy || model.study == nil)

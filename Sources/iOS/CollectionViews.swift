@@ -29,7 +29,7 @@ struct CaptureView: View {
          .alert("新建匿名受试者任务",isPresented:$showNew) {
             TextField("例如 S001",text:$subject).textInputAutocapitalization(.never)
             Button("建立") { model.create(subject) }; Button("取消",role:.cancel) {}
-         } message: { Text("只填写匿名编号，不填写姓名。新任务需要重新完成佩戴核验。") }
+         } message: { Text("只填写匿名编号，不填写姓名。新任务会重置佩戴与参考状态；建议重新核验，未完成也可采集原始数据。") }
     }
 }
 struct RecordingControls: View {

@@ -63,7 +63,7 @@ Windows可运行：
 & 'D:\anacond\python.exe' -X utf8 tools/package_source.py
 ```
 
-结构检查不是编译。Mac/云端运行 `bash tools/build_macos.sh`：Swift XCTest、Python独立核验Swift实际导出ZIP、iOS模拟器编译、iPhone ARM64编译，成功后生成无签名IPA。测试覆盖185组627帧生产解析向量、120位置与新尝试、质量否决、历史兼容/恢复、正式保存/复核/导出、97项门限、时间加权运动、四元数正负等价、配置白名单、校准时间/中断/重复回调和操作恢复。
+结构检查不是编译。Mac/云端运行 `bash tools/build_macos.sh`：Swift XCTest、Python独立核验Swift实际导出ZIP、iOS模拟器编译、iPhone ARM64编译，成功后生成无签名IPA。测试覆盖185组627帧生产解析向量、120位置与新尝试、质量否决、历史兼容/恢复、正式保存/复核/导出、开始条件与提醒分离、严格40Hz边界、时间加权运动、四元数正负等价、配置白名单、校准时间/中断/重复回调和操作恢复。
 
 GitHub公开仓库为用户已授权的 [mollyn525/molwlwwla](https://github.com/mollyn525/molwlwwla)。仅上传源码、构建脚本、去标识协议夹具；不上传真实实验ZIP、MAC/UUID名册、账号、密码、签名或证书。Actions固定Xcode26.0.1/macOS15，不需要Apple登录，产物需本地个人签名后安装。
 

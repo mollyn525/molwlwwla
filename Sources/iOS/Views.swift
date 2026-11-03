@@ -135,7 +135,7 @@ struct RoleView: View {
                 if model.engineState.found.isEmpty { Button("扫描设备"){model.engine.scan()}.disabled(model.busy) }
                 ForEach(model.engineState.found.keys.sorted(),id:\.self) { id in Button(model.engineState.found[id] ?? id) {bindID = id}.disabled(model.busy) }
             }
-        }.navigationTitle(role.name).confirmationDialog("确认设备与部位",isPresented:Binding(get:{bindID != nil},set:{if !$0 {bindID = nil}})) { if let id = bindID { Button("绑定到\(role.name)"){model.bind(role:role.id,id:id,name:model.engineState.found[id] ?? id);bindID = nil} } } message: { Text("请核对设备标签。更换后需要重新完成佩戴核验。") }
+        }.navigationTitle(role.name).confirmationDialog("确认设备与部位",isPresented:Binding(get:{bindID != nil},set:{if !$0 {bindID = nil}})) { if let id = bindID { Button("绑定到\(role.name)"){model.bind(role:role.id,id:id,name:model.engineState.found[id] ?? id);bindID = nil} } } message: { Text("请核对设备标签。更换后参考与佩戴状态会重置，建议重新核验；未完成仍可采集原始数据。") }
     }
     func value(_ name:String,_ v:[Double])->some View { VStack(alignment:.leading){Text(name).font(.caption);Text(v.map{String(format:"%.5f",$0)}.joined(separator:"  ")).monospacedDigit().font(.footnote)} }
 }
