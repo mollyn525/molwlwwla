@@ -243,8 +243,8 @@
     },
     {
       "path": "UITests/WorkflowUITests.swift",
-      "bytes": 6654,
-      "sha256": "019387d6de023ce93eab52736c9ec683ee385c681af4b5da453656d7fb2323d4"
+      "bytes": 6925,
+      "sha256": "b3bd1b8430f3013cecb11a5c8d78645f647925f951a9cda5c3fee77cd06b02fd"
     }
   ]
 }

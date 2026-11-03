@@ -47,8 +47,11 @@ final class WorkflowUITests: XCTestCase {
         app.tabBars.buttons["记录"].tap()
         XCTAssertTrue(app.buttons["刷新记录"].waitForExistence(timeout:5))
         app.tabBars.buttons["设置"].tap()
-        XCTAssertTrue(app.buttons["应用 / 重试未达标设备"].waitForExistence(timeout:5))
-        XCTAssertFalse(app.buttons["应用 / 重试未达标设备"].isEnabled)
+        let applyConfiguration = app.buttons["应用 / 重试未达标设备"]
+        // Settings is a scrollable list; on iPhone 16 this row starts below the viewport.
+        for _ in 0..<4 { if applyConfiguration.exists { break }; app.swipeUp() }
+        XCTAssertTrue(applyConfiguration.waitForExistence(timeout:5))
+        XCTAssertFalse(applyConfiguration.isEnabled)
         attach(app,"配置与校准入口")
         let results = app.buttons["calibrationResults"]
         for _ in 0..<5 { if results.isHittable { break }; app.swipeUp() }
@@ -99,6 +102,7 @@ final class WorkflowUITests: XCTestCase {
         XCTAssertTrue(app.buttons["停止本批全部校准"].waitForExistence(timeout:5))
         XCTAssertTrue(app.staticTexts["保存后静态复核通过"].firstMatch.exists)
         XCTAssertTrue(app.staticTexts["该设备断线；其他设备继续"].exists)
+        attach(app,"并行校准成功与单台失败（模拟数据）")
         app.swipeUp()
         XCTAssertTrue(app.staticTexts["保持不动，独立等待保存"].firstMatch.exists)
         attach(app,"并行校准逐台独立状态（模拟数据）")
