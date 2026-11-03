@@ -13,6 +13,10 @@ public struct SensorBinding: Codable, Sendable {
     public var referenceStudyID: String?, referenceDiagnostic: Bool?, gravity: [Double]?, referenceMS: Int64?
     public var movement: MovementReport?, wearNote: String?, wearConfirmedMS: Int64?, wearPendingMS: Int64?
     public init(peripheralID: String, name: String) { self.peripheralID = peripheralID; self.name = name }
+    public func hasRecordingReference(studyID: String?) -> Bool {
+        guard let studyID else { return false }
+        return referenceStudyID == studyID && referenceDiagnostic == false && reference?.count == 4 && referenceID != nil
+    }
 }
 public struct NameChange: Codable, Sendable { public var wall_ms: Int64, before: [String], after: [String] }
 public struct Study: Identifiable, Codable, Sendable {

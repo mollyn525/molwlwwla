@@ -95,7 +95,20 @@ struct ActionView: View {
                 }
             }
             Text("第\(slot)/15条 · 下次第\((rows.last?.assignment?.slot_attempt ?? 0)+1)次尝试").font(.headline)
-            Button("开始本条") { model.start(action:action,slot:slot) }.buttonStyle(.borderedProminent).disabled(!startAllowed).accessibilityIdentifier("formalStart")
+            Button("开始本条采集") { model.start(action:action,slot:slot) }.buttonStyle(.borderedProminent).disabled(!startAllowed).accessibilityIdentifier("formalStart")
+            Text("频率要求：每台加速度、角速度各 >40 Hz，平均值包含断流时间。").font(.caption).foregroundStyle(.secondary)
+            if !startAllowed {
+                VStack(alignment:.leading,spacing:6) {
+                    Text("暂不能开始的原因").font(.headline).accessibilityIdentifier("formalBlockedReason")
+                    if model.book.accepted(action:action,slot:slot) { Text("本编号已有合格记录；需要重采时，先点“这条有问题，标记补录”。") }
+                    if model.book.nextAction != action {
+                        if let next = model.book.nextAction { Text("请先完成\(model.study?.actions[next] ?? "动作\(next+1)")的15条合格记录。") }
+                        else { Text("当前任务120条均已完成。") }
+                    }
+                    ForEach(model.preflight.blockers.prefix(3)) { row in Text(row.title+"："+row.detail).font(.footnote) }
+                    NavigationLink("查看原因与处理步骤") { PreflightView() }.accessibilityIdentifier("formalBlockedHelp")
+                }.foregroundStyle(.orange)
+            }
             RecordingControls()
             HStack {
                 Button("继续正常采集") { if let next = model.book.nextSlot(action:action,retry:false) { slot = next } }.disabled(model.busy || model.book.nextSlot(action:action,retry:false) == nil)
@@ -112,8 +125,9 @@ struct ActionView: View {
                 ForEach(rows.reversed()) { trial in NavigationLink { RecordView(trial:trial) } label: { Text("尝试\(trial.assignment?.slot_attempt ?? 0) · \(trial.accepted ? "已合格":"待补录")") } }
             }
             Section("采前检查") {
-                Text("通过 \(model.preflight.passed)/\(model.preflight.checks.count)项")
-                ForEach(model.preflight.failures.prefix(8)) { row in VStack(alignment:.leading) { Text(row.title); Text(row.detail).font(.caption).foregroundStyle(.secondary) } }
+                Text(model.preflight.ready ? "开始条件已满足，可采集":"还有\(model.preflight.blockers.count)项开始条件未满足")
+                Text("另有\(model.preflight.reminders.count)项提醒，不阻止采集。佩戴、参考姿态与配置状态会随记录保存。").font(.footnote)
+                ForEach(model.preflight.blockers.prefix(8)) { row in VStack(alignment:.leading) { Text(row.title); Text(row.detail).font(.caption).foregroundStyle(.secondary) } }
                 NavigationLink("查看全部检查项与部位") { PreflightView() }
             }
         }.buttonStyle(.borderless).navigationTitle(model.study?.actions[action] ?? "动作\(action+1)")
@@ -128,11 +142,15 @@ struct PreflightView: View {
     var body: some View {
         TimelineView(.periodic(from:.now,by:1)) { _ in
             List {
-                Text("通过 \(model.preflight.passed)/\(model.preflight.checks.count)项").font(.title2)
+                Text(model.preflight.ready ? "可以开始采集":"\(model.preflight.blockers.count)项开始条件待处理").font(.title2)
+                Text("主要条件：15台实际连接并就绪，每台加速度、角速度各 >40 Hz。佩戴、参考姿态和配置检查属于提醒，未通过也可采集。").font(.footnote)
+                NavigationLink("设备绑定与连接") { DevicesView() }
+                NavigationLink("配置读取与核验") { SettingsView() }
+                NavigationLink("佩戴确认与参考姿态") { WearingView() }
                 Toggle("只显示未通过项",isOn:$onlyFailures)
-                ForEach(onlyFailures ? model.preflight.failures:model.preflight.checks) { row in
+                ForEach((onlyFailures ? model.preflight.failures:model.preflight.checks).sorted { $0.blocksStart && !$1.blocksStart }) { row in
                     VStack(alignment:.leading,spacing:4) {
-                        Label(row.title,systemImage:row.passed ? "checkmark.circle.fill":"exclamationmark.circle").foregroundStyle(row.passed ? .teal:.orange)
+                        Label(row.title+(row.blocksStart ? " · 开始条件":" · 提醒，不阻止采集"),systemImage:row.passed ? "checkmark.circle.fill":"exclamationmark.circle").foregroundStyle(row.passed ? .teal:.orange)
                         Text(row.detail).font(.footnote).foregroundStyle(.secondary)
                     }
                 }

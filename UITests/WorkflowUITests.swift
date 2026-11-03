@@ -34,6 +34,13 @@ final class WorkflowUITests: XCTestCase {
         app.buttons["collectionAction0"].tap()
         let start = app.buttons["formalStart"]
         XCTAssertTrue(start.waitForExistence(timeout:5)); XCTAssertFalse(start.isEnabled)
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts["formalBlockedReason"].waitForExistence(timeout:5))
+        let help = app.buttons["formalBlockedHelp"]
+        XCTAssertTrue(help.waitForExistence(timeout:5)); help.tap()
+        XCTAssertTrue(app.navigationBars["采前检查清单"].waitForExistence(timeout:5))
+        XCTAssertTrue(app.buttons["设备绑定与连接"].exists)
+        XCTAssertTrue(app.buttons["佩戴确认与参考姿态"].exists)
         attach(app,"缺少设备时禁止正式录制")
         app.tabBars.buttons["佩戴"].tap()
         XCTAssertTrue(app.buttons["采集15部位完整参考姿态"].waitForExistence(timeout:5))

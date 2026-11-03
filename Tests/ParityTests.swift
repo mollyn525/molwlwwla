@@ -28,21 +28,26 @@ final class ParityTests: XCTestCase {
     private func gate(_ roster: [String:SensorBinding], _ devices: [DeviceReadiness], fresh: Bool = true, bytes: Int64 = 1_000_000_000, normal: Bool = true, history: Bool = true) -> PreflightResult {
         Preflight.evaluate(study:"study",nextAction:0,roster:roster,devices:devices,idle:true,bluetooth:true,freeBytes:bytes,fresh:fresh,normalMode:normal,classificationOK:history)
     }
-    func testPreflightNamesEveryFailedRoleAndCannotUseDiagnosticReferences() {
-        let (roster,devices) = readySetup(); XCTAssertTrue(gate(roster,devices).ready); XCTAssertEqual(gate(roster,devices).checks.count,97)
+    func testPreflightSeparatesStartConditionsFromWearingReminders() {
+        let (roster,devices) = readySetup(); XCTAssertTrue(gate(roster,devices).ready); XCTAssertEqual(gate(roster,devices).checks.count,99)
         for index in 0..<15 {
             let role = BodyRole.all[index].id
-            var changed = devices; changed[index].hz[2] = 7.85
+            var changed = devices; changed[index].hz[0] = 40
             XCTAssertTrue(gate(roster,changed).failures.contains { $0.role == role && $0.id.hasSuffix(":data") })
-            changed = devices; changed[index].ages[3] = 500; XCTAssertFalse(gate(roster,changed).ready)
-            changed = devices; changed[index].checkedSeconds = 9.99; XCTAssertFalse(gate(roster,changed).ready)
+            changed = devices; changed[index].ages[1] = 500; XCTAssertTrue(gate(roster,changed).ready); XCTAssertFalse(gate(roster,changed).reminders.isEmpty)
+            changed = devices; changed[index].checkedSeconds = 9.99; XCTAssertTrue(gate(roster,changed).ready)
             changed = devices; changed[index].connected = false; XCTAssertFalse(gate(roster,changed).ready)
-            var bindings = roster; bindings[role]?.referenceDiagnostic = true; XCTAssertFalse(gate(bindings,devices).ready)
-            bindings = roster; bindings[role]?.referenceStudyID = "old-study"; XCTAssertFalse(gate(bindings,devices).ready)
-            bindings = roster; bindings[role]?.wearConfirmed = false; XCTAssertFalse(gate(bindings,devices).ready)
-            bindings = roster; bindings.removeValue(forKey:role); XCTAssertFalse(gate(bindings,devices).ready)
+            var bindings = roster; bindings[role]?.referenceDiagnostic = true; XCTAssertTrue(gate(bindings,devices).ready); XCTAssertFalse(gate(bindings,devices).reminders.isEmpty)
+            bindings = roster; bindings[role]?.referenceStudyID = "old-study"; XCTAssertTrue(gate(bindings,devices).ready)
+            bindings = roster; bindings[role]?.wearConfirmed = false; XCTAssertTrue(gate(bindings,devices).ready)
+            bindings = roster; bindings.removeValue(forKey:role); XCTAssertTrue(gate(bindings,devices).ready)
+            changed = devices; changed[index].configurationOK = false; XCTAssertTrue(gate(roster,changed).ready)
         }
-        var duplicate = roster; duplicate[BodyRole.all[1].id] = duplicate[BodyRole.all[0].id]; XCTAssertFalse(gate(duplicate,devices).ready)
+        var duplicate = roster; duplicate[BodyRole.all[1].id] = duplicate[BodyRole.all[0].id]; XCTAssertTrue(gate(duplicate,devices).ready)
+        XCTAssertTrue(gate([:],devices).ready)
+        XCTAssertFalse(gate(roster,Array(devices.prefix(14))).ready)
+        var repeated = devices; repeated[1].id = repeated[0].id; XCTAssertFalse(gate(roster,repeated).ready)
+        var extra = devices[0]; extra.id = "extra"; XCTAssertFalse(gate(roster,devices+[extra]).ready)
         XCTAssertFalse(gate(roster,devices,fresh:false).ready); XCTAssertFalse(gate(roster,devices,bytes:256*1024*1024-1).ready)
         XCTAssertFalse(gate(roster,devices,normal:false).ready); XCTAssertFalse(gate(roster,devices,history:false).ready)
     }
@@ -52,6 +57,70 @@ final class ParityTests: XCTestCase {
             XCTAssertEqual(result.accepted,!diagnostic && started && manual && quality)
             XCTAssertEqual(result.normal,!diagnostic && started && manual)
         } } } }
+    }
+    func testFifteenInertialStreamsPassWithoutAuxiliaryFrequencyGate() {
+        let (roster,original) = readySetup()
+        var devices = original
+        for i in devices.indices { devices[i].hz = [49.63,49.63,7.85,7.85]; devices[i].ages = [20,20,650,nil] }
+        XCTAssertTrue(gate(roster,devices).ready)
+        for i in devices.indices {
+            for stream in 0..<2 {
+                var changed = devices; changed[i].hz[stream] = 40
+                XCTAssertFalse(gate(roster,changed).ready)
+                changed[i].hz[stream] = 40.01; XCTAssertTrue(gate(roster,changed).ready)
+                changed[i].ages[stream] = 500; XCTAssertTrue(gate(roster,changed).ready)
+                changed[i].ages[stream] = nil; XCTAssertTrue(gate(roster,changed).ready)
+            }
+        }
+        var incomplete = roster; incomplete[BodyRole.all[0].id]?.reference = nil
+        XCTAssertTrue(gate(incomplete,devices).ready); XCTAssertFalse(gate(incomplete,devices).reminders.isEmpty)
+        XCTAssertFalse(QualityPolicy.current.recentRatesPass([Double.nan,50]))
+        XCTAssertFalse(QualityPolicy.current.recentDataHealthy([20,Double.nan]))
+    }
+    func testStrict40HzQualityUsesWholeDurationAndKeepsGapAndStorageGuards() {
+        func result(_ hz: Int, _ name: String, end: UInt64 = 2*secondNS) -> StreamResult {
+            var s = TrialStream(start:0)
+            for i in 0..<hz*2 { s.add(UInt64(i)*secondNS/UInt64(hz)) }
+            return s.result(end:end,name:name)
+        }
+        let good = [result(50,"acceleration"),result(50,"angular_velocity"),result(8,"magnetic_field"),result(8,"quaternion")]
+        XCTAssertTrue(QualityPolicy.current.passes(good))
+        XCTAssertFalse(QualityPolicy.legacy.passes(good))
+        XCTAssertTrue(QualityPolicy.current.passes(Array(good.prefix(2)),invalidQ:3))
+        for index in 0..<2 {
+            var changed = good; changed[index] = result(40,streams[index]); XCTAssertFalse(QualityPolicy.current.passes(changed))
+            XCTAssertEqual(changed[index].complete_seconds_at_or_below_40,2)
+            changed[index] = result(41,streams[index]); XCTAssertTrue(QualityPolicy.current.passes(changed))
+            changed[index] = result(50,streams[index],end:3*secondNS)
+            XCTAssertEqual(changed[index].average_hz,100.0/3,accuracy:0.0001)
+            XCTAssertFalse(QualityPolicy.current.passes(changed))
+        }
+        XCTAssertFalse(QualityPolicy.current.passes(good,discarded:1))
+        XCTAssertFalse(QualityPolicy.current.passes(good,tail:1))
+        XCTAssertFalse(QualityPolicy.current.passes([good[0],good[0]]))
+        var burst = TrialStream(start:0)
+        for i in 0..<100 { burst.add(UInt64(i)*10_000_000) }
+        let gapped = burst.result(end:2*secondNS,name:"acceleration")
+        XCTAssertEqual(gapped.average_hz,50); XCTAssertFalse(QualityPolicy.current.passes([gapped,good[1]]))
+        let fault = RecordingPolicy.summary(diagnostic:false,actionStarted:true,userEnded:false,quality:true)
+        XCTAssertFalse(fault.accepted)
+    }
+    func testLegacyQualityMetadataAndStatisticsRemainReadable() throws {
+        let old: [String:Any] = ["name":"acceleration","frames":70,"average_hz":35.0,"max_gap_ms":30.0,"complete_seconds_below_30":0,"second_frame_counts":[35,35]]
+        let decoded = try JSONDecoder().decode(StreamResult.self,from:JSONFile.bytes(old))
+        XCTAssertNil(decoded.complete_seconds_at_or_below_40)
+        XCTAssertEqual(QualityPolicy.recorded(metadata:[:],summary:[:]),.legacy)
+        XCTAssertEqual(QualityPolicy.recorded(metadata:["quality_policy":QualityPolicy.current.metadata],summary:[:]),.inertial)
+        XCTAssertNil(QualityPolicy.recorded(metadata:[:],summary:["quality_policy":["id":"unknown-policy"]]))
+        XCTAssertTrue(QualityPolicy.legacy.ratePasses(35)); XCTAssertFalse(QualityPolicy.current.ratePasses(35))
+    }
+    func testMissingOrOtherStudyReferenceDoesNotProduceRelativePose() {
+        var b = SensorBinding(peripheralID:"sensor",name:"WT")
+        XCTAssertFalse(b.hasRecordingReference(studyID:"s"))
+        b.reference = [1,0,0,0]; b.referenceID = "ref"; b.referenceStudyID = "s"; b.referenceDiagnostic = false
+        XCTAssertTrue(b.hasRecordingReference(studyID:"s")); XCTAssertFalse(b.hasRecordingReference(studyID:nil))
+        XCTAssertFalse(b.hasRecordingReference(studyID:"other"))
+        b.referenceDiagnostic = true; XCTAssertFalse(b.hasRecordingReference(studyID:"s"))
     }
     func testLegacyRosterKeepsBindingsWithoutGrantingFormalReference() throws {
         let root = try folder(), id = UUID().uuidString
@@ -142,12 +211,12 @@ final class ParityTests: XCTestCase {
         m.add(11*secondNS,acceleration:[0.2,0,1],gyro:[0,2,0])
         XCTAssertEqual(m.issues(now:11*secondNS).count,3)
     }
-    private func save(_ files: StudyFiles, assignment: Assignment, quality: Bool) throws -> URL {
-        let writer = try SessionWriter(root:files.sessions,metadata:["diagnostic":false,"assignment":try JSONFile.object(assignment),"study":try JSONFile.object(files.study!)])
+    private func save(_ files: StudyFiles, assignment: Assignment, quality: Bool, policy: QualityPolicy = .legacy) throws -> URL {
+        let writer = try SessionWriter(root:files.sessions,metadata:["quality_policy":policy.metadata,"diagnostic":false,"assignment":try JSONFile.object(assignment),"study":try JSONFile.object(files.study!)])
         writer.raw(id:"sensor",ns:1,wall:1,data:try WitProtocol.unhex("5561000000000008000000000000000000000000"))
         writer.relative(id:"sensor",ns:1,quaternion:[1,0,0,0],reference:"test-reference")
         let done = expectation(description:"save formal attempt")
-        writer.close(summary:["diagnostic":false,"quality_passed":quality,"normal_completion":true,"accepted":quality,"status":quality ? "accepted_default":"quality_failed"]) { r in if case .failure(let e) = r { XCTFail(e.localizedDescription) }; done.fulfill() }
+        writer.close(summary:["quality_policy":policy.metadata,"diagnostic":false,"quality_passed":quality,"normal_completion":true,"accepted":quality,"status":quality ? "accepted_default":"quality_failed"]) { r in if case .failure(let e) = r { XCTFail(e.localizedDescription) }; done.fulfill() }
         wait(for:[done],timeout:10); try files.recover(); return writer.directory
     }
     func testFormalSaveReviewRetryReopenAndClassifiedArchivePreserveBytes() throws {
@@ -158,9 +227,9 @@ final class ParityTests: XCTestCase {
         try files.markRetry(id:first.lastPathComponent,reason:"绑带松动",revision:0,at:2); XCTAssertEqual(files.book.total,0)
         try files.review(id:first.lastPathComponent,decision:"accepted",reason:"误标",revision:1,at:3); XCTAssertEqual(files.book.total,1)
         try files.markRetry(id:first.lastPathComponent,reason:"动作做错",revision:2,at:4)
-        let second = try save(files,assignment:files.book.begin(action:0,slot:1),quality:false)
+        let second = try save(files,assignment:files.book.begin(action:0,slot:1),quality:false,policy:.inertial)
         XCTAssertThrowsError(try files.review(id:second.lastPathComponent,decision:"accepted",reason:"override",revision:0,at:5))
-        _ = try save(files,assignment:files.book.begin(action:0,slot:1),quality:true)
+        _ = try save(files,assignment:files.book.begin(action:0,slot:1),quality:true,policy:.inertial)
         let reopened = try StudyFiles(root:files.root); XCTAssertEqual(reopened.book.total,1); XCTAssertEqual(reopened.trials.count,3)
         XCTAssertEqual(reopened.book.attempts(action:0,slot:1).map { $0.assignment!.slot_attempt },[1,2,3])
         XCTAssertEqual(try Data(contentsOf:first.appendingPathComponent("notifications.jsonl")),raw)

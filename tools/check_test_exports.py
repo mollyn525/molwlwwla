@@ -21,6 +21,12 @@ for path in paths:
             assert next(r for r in rows if r['counted_for_slot'])['assignment']['slot_attempt']==3
             assert all('/action_01/slot_001/attempt_' in r['archive_path'] for r in rows)
             assert {'operations.jsonl','roster-at-export.json','studies-at-export.json'} <= set(names)
+            for row in rows:
+                expected = 'four_streams_gte30_v1' if row['assignment']['slot_attempt']==1 else 'inertial_gt40_v2'
+                for name in ['metadata.json','summary.json']:
+                    policy=json.loads(z.read(row['archive_path']+'/'+name))['quality_policy']
+                    assert policy['id']==expected
+                    assert policy['average_hz_comparison']==('>=' if row['assignment']['slot_attempt']==1 else '>')
         for row in rows:
             required=json.loads(z.read(row['archive_path']+'/file-integrity-at-export.json'))['required_files']
             assert all(row['archive_path']+'/'+n in names for n in required)

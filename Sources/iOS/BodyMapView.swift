@@ -38,8 +38,8 @@ struct BodyMapView: View {
         guard let d = model.device(role) else { return .gray }
         guard d.connected else { return d.wanted ? .red:.gray }
         if !d.initialized || d.maintenance || model.engineState.passive { return .blue }
-        if d.ages.contains(where: { ($0 ?? 2000) >= 2000 }) { return .red }
-        if d.ages.contains(where: { ($0 ?? 500) >= 500 }) { return .orange }
+        if d.ages.prefix(2).contains(where: { ($0 ?? 2000) >= 2000 }) { return .red }
+        if !QualityPolicy.current.recentDataHealthy(d.ages) { return .orange }
         return .green
     }
 }

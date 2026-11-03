@@ -120,18 +120,19 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     }
     func finish(reason: String, at: UInt64, userEnded: Bool = false) {
         guard let recorder = writer else { return }; event(nil, "record_end reason=\(reason)")
-        var devices: [[String: Any]] = []; var quality = actionNS > 0 && !fault
+        var devices: [[String: Any]] = []; var quality = actionNS > 0 && !fault && (recordingDiagnostic || Set(targets).count == 15)
         for id in targets {
             guard let d = links[id] else { quality = false; continue }
             let results = d.trialStreams.enumerated().map { $0.element.result(end: at, name: streams[$0.offset]) }
             let discarded = d.trialDiscarded+d.parser.discarded
-            let passed = results.count == 4 && results.allSatisfy { $0.passed } && d.invalidQ == 0 && discarded == 0 && d.parser.pendingBytes == 0
+            let passed = QualityPolicy.current.passes(results,discarded:discarded,tail:d.parser.pendingBytes,invalidQ:d.invalidQ)
             quality = quality && passed
-            let role = recordingRoster.first { $0.value.peripheralID == id.uuidString }?.key ?? "unassigned"
+            let bindings = recordingRoster.filter { $0.value.peripheralID == id.uuidString }
+            let role = bindings.count == 1 ? bindings.first!.key : "unassigned"
             devices.append(["address":id.uuidString,"role":role,"streams":results.compactMap { try? JSONFile.object($0) },"invalid_quaternions":d.invalidQ,"parser_discarded_bytes":discarded,"tail_bytes":d.parser.pendingBytes,"query_submissions":d.submittedQueries,"backpressure_ticks":d.backpressureTicks,"write_ready_callbacks":d.writeReadyCallbacks])
         }
         let outcome = RecordingPolicy.summary(diagnostic:recordingDiagnostic,actionStarted:actionNS>0,userEnded:userEnded,quality:quality)
-        let summary: [String: Any] = ["action_start_ns":actionNS,"end_ns":at,"duration_s":actionNS > 0 ? Double(at-actionNS)/1e9 : 0,"reason":reason,"diagnostic":recordingDiagnostic,"fault_event":fault,"quality_passed":quality,"accepted":outcome.accepted,"normal_completion":outcome.normal,"status":outcome.status,"devices":devices]
+        let summary: [String: Any] = ["quality_policy":QualityPolicy.current.metadata,"action_start_ns":actionNS,"end_ns":at,"duration_s":actionNS > 0 ? Double(at-actionNS)/1e9 : 0,"reason":reason,"diagnostic":recordingDiagnostic,"fault_event":fault,"quality_passed":quality,"accepted":outcome.accepted,"normal_completion":outcome.normal,"status":outcome.status,"devices":devices]
         writer = nil; saving = true; message = "正在保存…"
         recorder.close(summary: summary) { result in self.work.async {
             self.saving = false
@@ -208,7 +209,18 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
             var issues: [String] = []
             if d.wanted && !d.connected { issues.append(String(format:"断开/重连中 %.1f秒",d.disconnectedAt > 0 ? Double(now-d.disconnectedAt)/1e9:0)) }
             if d.maintenance { issues.append("维护中；结束后重新检查数据") }
-            if d.connected && !d.maintenance && !passive { for k in 0..<4 { let label = ["加速度","角速度","磁场","四元数"][k]; if let age = ages[k], age >= 500 { issues.append("\(label)停更\(String(format:"%.1f",age/1000))秒") } else if ages[k] == nil { issues.append("\(label)尚未收到") }; if d.initialized && d.readyAt > 0 && now-d.readyAt >= 10*secondNS && hz[k] < 30 { if d.lowSince[k] == 0 { d.lowSince[k] = now }; issues.append(String(format:"%@近10秒%.1fHz，频低持续%.1f秒",label,hz[k],Double(now-d.lowSince[k])/1e9)) } else { d.lowSince[k] = 0 } } }
+            if d.connected && !d.maintenance && !passive {
+                for k in 0..<4 {
+                    let required = QualityPolicy.current.requires(k), label = ["加速度","角速度","磁场","四元数"][k]
+                    let suffix = required ? "":"（辅助数据提示，不影响惯性质量判定）"
+                    if let age = ages[k], age >= 500 { issues.append("\(label)停更\(String(format:"%.1f",age/1000))秒"+suffix) }
+                    else if ages[k] == nil { issues.append("\(label)尚未收到"+suffix) }
+                    if required && d.initialized && d.readyAt > 0 && now-d.readyAt >= 10*secondNS && !QualityPolicy.current.ratePasses(hz[k]) {
+                        if d.lowSince[k] == 0 { d.lowSince[k] = now }
+                        issues.append(String(format:"%@近10秒%.2fHz，未超过40Hz已持续%.1f秒",label,hz[k],Double(now-d.lowSince[k])/1e9))
+                    } else { d.lowSince[k] = 0 }
+                }
+            }
             return DeviceSnapshot(id:d.peripheral.identifier.uuidString,name:d.name,status:d.status,wanted:d.wanted,connected:d.connected,initialized:d.initialized,ages:ages,hz:hz,acceleration:d.acceleration,gyro:d.gyro,magnetic:d.magnetic,quaternion:d.quaternion,configurationOK:d.registers[0x03] == 8 && d.registers[0x24] == 0 && d.registers[0x96] == 0,firmware:d.firmware,issues:issues,lastError:d.lastError,readiness:readiness(d,now),maintenance:d.maintenance,lastOperation:d.lastOperation,submittedQueries:d.submittedQueries,backpressureTicks:d.backpressureTicks,writeReadyCallbacks:d.writeReadyCallbacks)
         }
         DispatchQueue.main.async { self.onSnapshot?(snapshot) }
@@ -282,7 +294,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
             else if frame.register == 0x3a { d.magnetic = frame.words.prefix(3).map(Double.init); indices = [2]; d.scheduler.reply(frame.register) }
             else if frame.register == 0x51 {
                 d.quaternion = frame.quaternion; d.quaternionWindow.add(ns,frame.quaternion); indices = [3]; d.scheduler.reply(frame.register)
-                if !frame.quaternionValid { d.invalidQ += 1; if writer != nil { fault = true } }
+                if !frame.quaternionValid { d.invalidQ += 1; event(d,"auxiliary_quaternion_invalid; excluded_from_inertial_quality") }
                 if writer != nil, let binding = recordingRoster.values.first(where: { $0.peripheralID == peripheral.identifier.uuidString }), let reference = binding.reference, let refID = binding.referenceID, let relative = try? QuaternionMath.relative(reference:reference,current:frame.quaternion) { writer?.relative(id:peripheral.identifier.uuidString,ns:ns,quaternion:relative,reference:refID) }
             }
             else if frame.register >= 0 {

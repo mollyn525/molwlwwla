@@ -3,10 +3,42 @@ import Foundation
 public let secondNS: UInt64 = 1_000_000_000
 public let staleNS: UInt64 = 500_000_000
 public let streams = ["acceleration", "angular_velocity", "magnetic_field", "quaternion"]
+public enum QualityPolicy: String, Codable {
+    case legacy = "four_streams_gte30_v1"
+    case inertial = "inertial_gt40_v2"
+    public static let current = QualityPolicy.inertial
+    public var requiredNames: [String] { self == .inertial ? Array(streams.prefix(2)) : streams }
+    public var title: String { self == .inertial ? "加速度、角速度各 >40 Hz" : "历史标准：四项各 ≥30 Hz" }
+    public func ratePasses(_ hz: Double) -> Bool { hz.isFinite && (self == .inertial ? hz > 40 : hz >= 30) }
+    public func requires(_ index: Int) -> Bool { requiredNames.indices.contains(index) }
+    public func recentDataHealthy(_ ages: [Double?]) -> Bool {
+        requiredNames.indices.allSatisfy { i in ages.indices.contains(i) && ages[i].map { $0.isFinite && $0 >= 0 && $0 < 500 } == true }
+    }
+    public func recentRatesPass(_ hz: [Double]) -> Bool {
+        requiredNames.indices.allSatisfy { hz.indices.contains($0) && ratePasses(hz[$0]) }
+    }
+    public func passes(_ results: [StreamResult], discarded: Int = 0, tail: Int = 0, invalidQ: Int = 0) -> Bool {
+        guard discarded == 0, tail == 0, self != .legacy || invalidQ == 0 else { return false }
+        return requiredNames.allSatisfy { name in
+            let rows = results.filter { $0.name == name }
+            return rows.count == 1 && ratePasses(rows[0].average_hz) && rows[0].frames > 0 && rows[0].max_gap_ms.isFinite && rows[0].max_gap_ms >= 0 && rows[0].max_gap_ms < 500
+        }
+    }
+    public var metadata: [String:Any] {
+        ["id":rawValue,"required_streams":requiredNames,"average_hz_threshold":self == .inertial ? 40:30,
+         "average_hz_comparison":self == .inertial ? ">":">=","max_gap_ms_exclusive":500,
+         "duration_includes_gaps":true,"auxiliary_streams_recorded":true]
+    }
+    public static func recorded(metadata: [String:Any], summary: [String:Any]) -> QualityPolicy? {
+        let raw = (summary["quality_policy"] as? [String:Any])?["id"] as? String ?? (metadata["quality_policy"] as? [String:Any])?["id"] as? String
+        if let raw { return QualityPolicy(rawValue:raw) }; return .legacy
+    }
+}
 public struct StreamResult: Codable {
     public var name: String, frames: Int, average_hz: Double, max_gap_ms: Double
     public var complete_seconds_below_30: Int, second_frame_counts: [Int]
-    public var passed: Bool { average_hz >= 30 && max_gap_ms < 500 }
+    public var complete_seconds_at_or_below_40: Int? = nil
+    public var passed: Bool { QualityPolicy.current.ratePasses(average_hz) && max_gap_ms < 500 }
 }
 public struct TrialStream {
     public let start: UInt64
@@ -24,7 +56,8 @@ public struct TrialStream {
         let complete = Int(duration)
         return StreamResult(name: name, frames: count, average_hz: duration > 0 ? Double(count)/duration : 0,
             max_gap_ms: Double(max(maxGap, end > last ? end-last : 0))/1e6,
-            complete_seconds_below_30: (0..<complete).filter { $0 >= bins.count || bins[$0] < 30 }.count, second_frame_counts: bins)
+            complete_seconds_below_30: (0..<complete).filter { $0 >= bins.count || bins[$0] < 30 }.count, second_frame_counts: bins,
+            complete_seconds_at_or_below_40: (0..<complete).filter { $0 >= bins.count || bins[$0] <= 40 }.count)
     }
 }
 public struct RecentStream {

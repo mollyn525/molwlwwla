@@ -58,7 +58,7 @@ struct DevicesView: View {
                     }
                 }
             }
-            Text("绿色仅表示连接和近期四项更新，不代表30Hz达标、佩戴正确或姿态精度合格。").font(.footnote).foregroundStyle(.secondary)
+            Text("绿色仅表示连接和近期加速度、角速度更新；频率须各 >40 Hz，佩戴与参考姿态另行检查。").font(.footnote).foregroundStyle(.secondary)
         }.buttonStyle(.borderless).navigationTitle("设备").navigationBarTitleDisplayMode(.inline)
          .navigationDestination(item:$bodyRole) { index in RoleView(role:BodyRole.all[index]) }
     }
@@ -93,7 +93,7 @@ struct ConnectionStatusSection: View {
                         Text("\(d.status) · 初始化\(d.initialized ? "完成" : "未完成")")
                         if !d.lastError.isEmpty { Text("最近失败：\(d.lastError)").font(.footnote).foregroundStyle(.orange) }
                         if d.initialized {
-                            Text("近10秒 Hz（加速 / 角速 / 磁场 / 四元数）：" + d.hz.map { String(format:"%.2f",$0) }.joined(separator:" / ")).font(.caption).monospacedDigit()
+                            Text("近10秒 Hz（加速度 / 角速度）：" + d.hz.prefix(2).map { String(format:"%.2f",$0) }.joined(separator:" / ")).font(.caption).monospacedDigit()
                         }
                     }
                 }
@@ -122,7 +122,8 @@ struct RoleView: View {
                 Section("当前状态") { Text(d.name);Text(d.status);Text("固件 \(d.firmware)"); if !d.lastError.isEmpty { Text("最近失败：\(d.lastError)").foregroundStyle(.orange) }; ForEach(d.issues,id:\.self){Text($0).foregroundStyle(.orange)} }
                 Section("实时数据") {
                     value("加速度 g",d.acceleration); value("角速度 °/s",d.gyro); value("磁场原始值",d.magnetic); value("四元数",d.quaternion)
-                    Text("近10秒 Hz：" + d.hz.map{String(format:"%.2f",$0)}.joined(separator:" / "))
+                    Text("近10秒 Hz（加速度 / 角速度）：" + d.hz.prefix(2).map{String(format:"%.2f",$0)}.joined(separator:" / "))
+                    Text("频率要求：加速度、角速度各 >40 Hz；磁场与四元数继续记录。").font(.caption)
                     Picker("趋势数据",selection:$trendKind){Text("加速").tag(0);Text("角速").tag(1);Text("磁场").tag(2);Text("四元数").tag(3)}.pickerStyle(.segmented)
                     LiveTrendView(samples:trendKind == 0 ? model.trend[d.id] ?? [] : model.otherTrends[d.id]?[streams[trendKind]] ?? [],quaternion:trendKind == 3).frame(height:135)
                     Text("实时趋势按界面刷新显示，数值来自最新接收帧；完整数据以导出为准，不提供录后回放。").font(.caption)

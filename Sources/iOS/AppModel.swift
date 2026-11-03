@@ -77,7 +77,7 @@ import BaduanjinCore
     func start(action: Int, slot: Int) {
         guard !busy, let files, let study else { return }
         do {
-            guard preflight.ready else { throw LabError.invalid(preflight.failures.map { $0.title+"："+$0.detail }.joined(separator:"\n")) }
+            guard preflight.ready else { throw LabError.invalid(preflight.blockers.map { $0.title+"："+$0.detail }.joined(separator:"\n")) }
             let assignment = try book.begin(action:action,slot:slot); pending = true
             engine.startFormal(root:files.sessions,roster:roster,study:study,assignment:assignment,classificationOK:files.warnings.isEmpty)
         } catch { self.error = error.localizedDescription }

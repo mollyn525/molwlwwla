@@ -57,6 +57,8 @@ struct RecordView: View {
                 Text(current.id).font(.caption)
                 if let d = detail { Text(d.subject+" · "+d.actionName); Text(String(format:"动作段 %.3f秒",d.duration)); Text("结束原因："+d.reason) }
                 Text(current.qualityPassed ? "数据质量通过":"数据质量未通过").foregroundStyle(current.qualityPassed ? .teal:.orange)
+                Text(detail?.policy?.title ?? "质量标准未知，以原始摘要为准").font(.footnote)
+                if detail?.policy == .legacy { Text("保留记录时的质量结果，本次更新不重算历史合格次数。").font(.caption).foregroundStyle(.secondary) }
                 Text(current.diagnostic ? "诊断独立保存，不占正式编号":current.accepted ? "默认正常，计入合格次数":"待补录，原始记录保留")
                 ForEach(detail?.failureReasons ?? [],id:\.self) { Text($0).font(.footnote).foregroundStyle(.orange) }
                 Button("导出本次") { model.export([current]) }.disabled(model.busy)
@@ -74,15 +76,18 @@ struct RecordView: View {
             ForEach(detail?.devices ?? []) { device in
                 Section(device.role+" · "+device.name) {
                     ForEach(device.issues,id:\.self) { Text($0).font(.footnote).foregroundStyle(.orange) }
-                    ForEach(device.streams,id:\.name) { row in
+                    ForEach(device.notices,id:\.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+                    ForEach(device.streams.filter { QualityPolicy.current.requiredNames.contains($0.name) },id:\.name) { row in
                         VStack(alignment:.leading) {
                             Text(["acceleration":"加速度","angular_velocity":"角速度","magnetic_field":"磁场","quaternion":"四元数"][row.name] ?? row.name).font(.headline)
                             Text(String(format:"整段 %.2fHz · %d帧 · 最大间隙 %.1fms",row.average_hz,row.frames,row.max_gap_ms)).font(.footnote)
-                            Text("完整秒窗不足30帧：\(row.complete_seconds_below_30)个").font(.caption)
+                            if detail?.policy == .inertial, let count = row.complete_seconds_at_or_below_40 { Text("完整秒窗未超过40帧：\(count)个").font(.caption) }
+                            else if detail?.policy == .legacy { Text("历史完整秒窗不足30帧：\(row.complete_seconds_below_30)个").font(.caption) }
                         }
                     }
                 }
             }
+            Text("磁场、四元数及其完整统计保留在导出文件中。").font(.caption).foregroundStyle(.secondary)
             Section("修改审计") {
                 if current.reviews.isEmpty { Text("没有人工修改，正常结束且质量通过时默认正常").font(.footnote) }
                 ForEach(current.reviews,id:\.revision) { row in VStack(alignment:.leading) { Text("修改\(row.revision) · \(row.decision == "accepted" ? "恢复动作合格":"标记待补录")"); Text(row.reason).font(.footnote); Text(Date(timeIntervalSince1970:Double(row.wall_ms)/1000),style:.date).font(.caption) } }
