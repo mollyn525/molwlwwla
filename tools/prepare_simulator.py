@@ -16,6 +16,7 @@ udid = device['udid']
 with (root/'simulator-boot.log').open('w') as log:
     if device['state'] != 'Booted':
         subprocess.run(['xcrun','simctl','boot',udid],stdout=log,stderr=subprocess.STDOUT,check=True,timeout=60)
-    subprocess.run(['xcrun','simctl','bootstatus',udid,'-b'],stdout=log,stderr=subprocess.STDOUT,check=True,timeout=180)
+    # Fresh hosted macOS runners may need several minutes for the first runtime boot.
+    subprocess.run(['xcrun','simctl','bootstatus',udid,'-b'],stdout=log,stderr=subprocess.STDOUT,check=True,timeout=300)
 print('Booted '+device['name']+' iOS '+runtime['version'],file=sys.stderr)
 print(udid)

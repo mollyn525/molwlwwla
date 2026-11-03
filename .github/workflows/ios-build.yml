@@ -23,7 +23,7 @@ jobs:
         timeout-minutes: 8
         run: bash tools/build_macos.sh simulator
       - name: Run simulator workflow tests
-        timeout-minutes: 12
+        timeout-minutes: 15
         run: bash tools/build_macos.sh ui
       - name: Compile unsigned iPhone app
         timeout-minutes: 6

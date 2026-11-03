@@ -4,7 +4,7 @@
     {
       "path": ".github/workflows/ios-build.yml",
       "bytes": 1435,
-      "sha256": "2992a8309ce3c58ee7bed71592a9e1684a51cb317ef07163dacbbb88866fa3c0"
+      "sha256": "a41ea0fbe2c12a99acf8052edeecb6f86404d426d96f3cf0947961b3f306fb85"
     },
     {
       "path": ".gitignore",
@@ -228,8 +228,8 @@
     },
     {
       "path": "tools/prepare_simulator.py",
-      "bytes": 1400,
-      "sha256": "caa414101a4f6109ee5955f9e33aaadca36ac0a569c22c10100922250f29e69c"
+      "bytes": 1486,
+      "sha256": "26c13ec7bec767909dda2aba68fa6d6ce01a96e784f97f0373eed5ac6a7423c4"
     },
     {
       "path": "tools/ProtocolOracle.java",
