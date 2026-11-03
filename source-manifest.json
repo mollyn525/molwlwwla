@@ -173,8 +173,8 @@
     },
     {
       "path": "tools/build_macos.sh",
-      "bytes": 2288,
-      "sha256": "aa11246d9cfd302f72b37400e05d4dfa33dbed9229410ab856319b63a5a276b3"
+      "bytes": 2808,
+      "sha256": "3830de389e38497e6f61d6e01bdbbb3b9500c4660dc98438e764ad6d62b266ff"
     },
     {
       "path": "tools/check_test_exports.py",
