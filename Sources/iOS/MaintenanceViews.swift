@@ -23,10 +23,11 @@ struct SettingsView: View {
                 Button("重新写入并核验模板") { rewrite = true }.disabled(model.busy || selectedCount == 0)
             }
             Section("硬件加速度校准") {
+                NavigationLink("查看加速度校准结果") { CalibrationResultsView() }.accessibilityIdentifier("calibrationResults")
                 Text("佩戴前，按机身坐标标识让原始Z正向朝上（约+1g），放在水平稳定台面，至少放稳3秒；不能按外壳“正面”判断。")
-                Text("当前选中\(selectedCount)台，逐台约16–20秒，全组预计约\(max(1,Int(ceil(Double(selectedCount)*20/60))))分钟。直到批次结束，全组都需保持不动。").font(.footnote)
+                Text("当前选中\(selectedCount)台，通常每台16–20秒；遇短暂停顿，保存前后各最多延长8秒。请按每台约40秒预留，全组约\(max(1,Int(ceil(Double(selectedCount)*40/60))))分钟，直到批次结束都保持不动。").font(.footnote)
                 Button("已按原始+Z朝上放稳，准备校准") { calibrate = true }.disabled(model.busy || selectedCount == 0)
-                Text("先检查姿态，再解锁、启动、等待、保存并静态复核。移动、缺口或断线会停止该台后续操作；静态复核不能证明内部完成状态或绝对精度。").font(.caption).foregroundStyle(.secondary)
+                Text("短暂停顿后等待数据恢复，重新取得约3秒完整稳定窗口再复核。明显运动、500ms以上间隙或断线仍会停止该台；不会重复发送启动校准。结果可随时通过上方按钮查看。").font(.caption).foregroundStyle(.secondary)
                 NavigationLink("查看逐台配置 / 校准结果") { OperationResultsView() }
             }
             Section("独立版本 \(model.version)") {
@@ -39,7 +40,72 @@ struct SettingsView: View {
          .confirmationDialog("重新写入配置模板",isPresented:$rewrite) { Button("重新写入并保存") { model.batch(calibrate:false,rewrite:true) } } message: { Text("即使旧值已符合，也会重新写入50Hz和九轴设置并保存；安装方向保留。") }
          .confirmationDialog("确认姿态与保持时长",isPresented:$calibrate) {
             Button("确认全部原始+Z朝上，开始校准") { model.batch(calibrate:true,placementConfirmed:true) }
-         } message: { Text("此操作会修改硬件校准。确认选中\(selectedCount)台原始Z正向朝上、已放稳至少3秒，点击后全组继续保持约\(max(1,Int(ceil(Double(selectedCount)*20/60))))分钟，直到提示批量操作结束。失败不会自动重试。") }
+         } message: { Text("此操作会修改硬件校准。确认选中\(selectedCount)台原始Z正向朝上、已放稳至少3秒，点击后全组继续保持约\(max(1,Int(ceil(Double(selectedCount)*40/60))))分钟，直到提示批量操作结束。短暂停顿会等待恢复；不会自动重新启动校准。") }
+    }
+}
+struct CalibrationResultsView: View {
+    @EnvironmentObject var model: AppModel
+    private var results: [OperationDetail] { model.operationHistory.filter(\.calibration) }
+    var body: some View {
+        List {
+            StatusBanner()
+            Section {
+                Text("共\(results.count)次 · 保存后静态复核通过\(results.filter(\.passed).count)次").font(.headline)
+                Text("按时间从新到旧保留每次尝试。点击设备查看校准前后读数与未通过原因。").font(.caption)
+                Button("导出完整操作审计") { model.exportOperations() }.disabled(model.busy)
+            }
+            if results.isEmpty { Text("尚无加速度校准结果；完成一台后将在这里显示。").accessibilityIdentifier("calibrationResultsEmpty") }
+            ForEach(results) { result in
+                NavigationLink { CalibrationResultDetailView(result:result) } label: {
+                    VStack(alignment:.leading,spacing:5) {
+                        Text(result.name).font(.headline)
+                        Text(result.status).foregroundStyle(result.passed ? .teal:.orange)
+                        Text(result.result).font(.caption).lineLimit(3)
+                        Text(Date(timeIntervalSince1970:Double(result.at)/1000),format:.dateTime.year().month().day().hour().minute().second()).font(.caption).foregroundStyle(.secondary)
+                    }
+                }.accessibilityIdentifier("calibrationResult_"+result.id)
+            }
+        }.navigationTitle("加速度校准结果")
+    }
+}
+struct CalibrationResultDetailView: View {
+    let result: OperationDetail
+    private func number(_ vector: [Double]?, _ index: Int, signed: Bool = false) -> String {
+        guard let vector else { return "未记录" }
+        return String(format:signed ? "%+.5f":"%.5f",vector[index])
+    }
+    var body: some View {
+        List {
+            Section(result.name) {
+                Text(result.status).font(.headline).foregroundStyle(result.passed ? .teal:.orange)
+                Text(result.result)
+                Text(result.saveSubmitted ? "已提交保存指令；没有固件内部完成应答。":"未提交保存；结束读数变化不代表已持久保存。")
+                Text(Date(timeIntervalSince1970:Double(result.at)/1000),format:.dateTime.year().month().day().hour().minute().second())
+            }
+            Section("加速度读数对比 · 单位g") {
+                Grid(alignment:.trailing,horizontalSpacing:12,verticalSpacing:10) {
+                    GridRow { Text("轴"); Text("开始前"); Text("结束时"); Text("变化量") }.font(.caption)
+                    ForEach(0..<3,id:\.self) { axis in
+                        GridRow {
+                            Text(["X","Y","Z"][axis])
+                            Text(number(result.beforeMean,axis))
+                            Text(number(result.afterMean,axis))
+                            Text(number(result.delta,axis,signed:true))
+                        }.font(.caption.monospacedDigit())
+                    }
+                }.accessibilityIdentifier("calibrationComparison")
+                Text("变化量＝结束时窗口均值－开始前窗口均值；这是输出读数变化，不是IMU内部补偿系数或精度认证。").font(.caption).foregroundStyle(.secondary)
+                Text(result.finalWindowPassed.map { $0 ? "结束时静态窗口通过；整体结果以上方结论为准。":"结束时静态窗口未通过，对比读数仅供排查。" } ?? "历史记录未单独保存结束窗口状态；请结合原始结果判断。").font(.caption)
+            }
+            Section("过程记录") {
+                if result.recoveredBeforeSave { Text("保存前曾等待数据恢复并重新复核") }
+                if result.recoveredAfterSave { Text("保存后曾等待数据恢复并重新复核") }
+                if let gap = result.longestGapMS { Text(String(format:"过程最长接收间隔：%.1f ms",gap)) }
+                if let gyro = result.maxGyro { Text(String(format:"过程最大角速度模长：%.3f °/s",gyro)) }
+                Text("设备："+result.address).font(.caption).textSelection(.enabled)
+                Text("操作编号："+result.id).font(.caption).textSelection(.enabled)
+            }
+        }.navigationTitle("校准结果详情")
     }
 }
 struct OperationResultsView: View {

@@ -1,19 +1,29 @@
 import Foundation
 
+/// Only missing/recovering window evidence may wait. Motion and persistent stream loss never clear.
+public struct CalibrationCheck {
+    public var pending: [String], failures: [String]
+    public init(pending: [String] = [], failures: [String] = []) { self.pending = pending; self.failures = failures }
+}
+
 /// A write completion here means local submission and settling, never firmware acknowledgement.
 public protocol CalibrationPort: AnyObject {
     var nowMS: UInt64 { get }
     var connected: Bool { get }
     func later(_ milliseconds: UInt64, _ action: @escaping () -> Void)
     func stableIssues(beforeSave: Bool) -> [String]
+    func recoveryCheck() -> CalibrationCheck
+    func resetVerificationWindow()
     func write(_ register: Int, _ value: Int, completion: @escaping (Bool,String) -> Void)
     func started()
     func phase(_ name: String)
     func verifySaved(_ completion: @escaping (Bool,String) -> Void)
 }
 public final class CalibrationController {
+    public static let recoveryLimitMS: UInt64 = 8000
     private let port: CalibrationPort, completion: (Bool,String) -> Void, entered: UInt64
     private var finished = false, waiting = false, step = 0
+    private var readbackFinished = false, recoveryPhase = ""
     public init(port: CalibrationPort, completion: @escaping (Bool,String) -> Void) { self.port = port; self.completion = completion; entered = port.nowMS }
     public func begin() {
         guard stable(false) else { return }; port.phase("waiting_unlock")
@@ -34,10 +44,42 @@ public final class CalibrationController {
     private func waitUntil(_ deadline: UInt64) {
         port.later(deadline > port.nowMS ? deadline-port.nowMS : 0) { [self] in
             guard active() else { return }; if port.nowMS < deadline { waitUntil(deadline); return }
-            guard stable(true) else { return }; port.phase("saving_without_second_unlock")
+            inspectWindow(afterSave:false,deadline:port.nowMS+Self.recoveryLimitMS)
+        }
+    }
+    private func inspectWindow(afterSave: Bool, deadline: UInt64) {
+        guard active() else { return }
+        let check = port.recoveryCheck()
+        let prefix = afterSave ? "已提交保存，后续复核未通过：":"保存前复核未通过，未发送保存："
+        if !check.failures.isEmpty { end(false,prefix+check.failures.joined(separator:"；")); return }
+        if !check.pending.isEmpty {
+            guard port.nowMS < deadline else { end(false,prefix+"等待数据恢复及完整稳定窗口超过8秒："+check.pending.joined(separator:"；")); return }
+            let name = afterSave ? "recovering_after_save":"recovering_before_save"
+            if recoveryPhase != name { recoveryPhase = name; port.phase(name) }
+            port.later(min(200,deadline-port.nowMS)) { [self] in inspectWindow(afterSave:afterSave,deadline:deadline) }
+            return
+        }
+        if afterSave {
+            if readbackFinished { end(true,"三指令流程、回读及静态复核通过；内部完成应答未知"); return }
+            port.phase("post_save_readback"); step += 1; let expected = step; waiting = true
+            port.verifySaved { [self] ok,why in
+                guard !finished, waiting, step == expected else { return }; waiting = false
+                guard active() else { return }; guard ok else { end(false,"已提交保存，回读未通过："+why); return }
+                readbackFinished = true
+                // A gap while reading registers must also recover within the same bounded window.
+                inspectWindow(afterSave:true,deadline:deadline)
+            }
+        } else {
+            port.phase("saving_without_second_unlock")
             send(0,0) { [self] in
-                guard active() else { return }; port.phase("post_save_verification"); step += 1; let expected = step; waiting = true
-                port.verifySaved { [self] ok,why in guard !finished, waiting, step == expected else { return }; waiting = false; guard active() else { return }; end(ok,why) }
+                guard active() else { return }; port.phase("post_save_verification")
+                port.later(500) { [self] in
+                    guard active() else { return }; port.resetVerificationWindow()
+                    port.later(3200) { [self] in
+                        guard active() else { return }
+                        inspectWindow(afterSave:true,deadline:port.nowMS+Self.recoveryLimitMS)
+                    }
+                }
             }
         }
     }

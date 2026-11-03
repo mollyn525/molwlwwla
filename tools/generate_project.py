@@ -32,6 +32,7 @@ ui='PRODUCT_NAME = WorkflowUITests; PRODUCT_BUNDLE_IDENTIFIER = dev.imulink.badu
 for kind in ('project','target','uitarget'):
     for config in ('Debug','Release'):
         flags='SWIFT_OPTIMIZATION_LEVEL = %s; DEBUG_INFORMATION_FORMAT = %s;'%('"-Onone"' if config=='Debug' else '"-O"','dwarf' if config=='Debug' else '"dwarf-with-dsym"')
+        if config=='Debug':flags+=' SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;'
         put(kind+config,'XCBuildConfiguration','name = %s; buildSettings = {%s};'%(config,common+flags+(target if kind=='target' else ui if kind=='uitarget' else '')))
     put(kind+'configs','XCConfigurationList','buildConfigurations = %s; defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;'%refs([kind+'Debug',kind+'Release']))
 put('app','PBXNativeTarget','name = Baduanjin; productName = Baduanjin; productType = "com.apple.product-type.application"; productReference = %s; buildConfigurationList = %s; buildPhases = %s; dependencies = (); buildRules = (); packageProductDependencies = %s;'%(uid('product'),uid('targetconfigs'),refs(['sources','frameworks','resources']),refs(['core'])))

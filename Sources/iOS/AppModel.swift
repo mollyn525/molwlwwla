@@ -41,6 +41,10 @@ import BaduanjinCore
         engine.onSaved = { [weak self] in self?.reload() }
         engine.onRequestFinished = { [weak self] in self?.pending = false }
         engine.onOperationFinished = { [weak self] in self?.reload() }
+        engine.onOperationResult = { [weak self] row in
+            guard let self, let result = OperationDetail(row) else { return }
+            self.operationHistory.removeAll { $0.id == result.id }; self.operationHistory.insert(result,at:0)
+        }
         engine.onReferences = { [weak self] references,studyID,diagnostic in
             guard let self, let files = self.files else { return }
             do { try files.saveReferences(references,studyID:studyID,diagnostic:diagnostic,at:BluetoothEngine.wall()); self.reload() } catch { self.error = error.localizedDescription }
@@ -49,6 +53,13 @@ import BaduanjinCore
             guard let self, let files = self.files else { return }
             do { try files.saveMovement(report,peripheralID:id,referenceID:reference); self.reload() } catch { self.error = error.localizedDescription }
         }
+        #if DEBUG
+        // Simulator UI fixture only; in-memory, no hardware writes or persistent history changes.
+        if ProcessInfo.processInfo.arguments.contains("--calibration-ui-fixture") {
+            let details: [String:Any] = ["operation_id":"UI_CALIBRATION","name":"模拟设备","type":"accelerometer_calibration","save_submitted":true,"static_check_passed":true,"final_window_passed":true,"result":"静态复核通过（模拟界面测试）","fresh_before":["static_mean_g":[0.01,0.02,0.99]],"after":["static_mean_g":[0.0,0.0,1.0]],"recovering_before_save_entered":true]
+            operationHistory = [OperationDetail(["type":"operation_result","wall_ms":1,"details":details])].compactMap { $0 }
+        }
+        #endif
     }
     func reload() {
         guard let files else { return }
@@ -58,11 +69,15 @@ import BaduanjinCore
                 guard let meta = try? files.metadata(trial.id), let summary = try? files.summary(trial.id) else { return nil }
                 return (trial.id,RecordDetail(metadata:meta,summary:summary))
             })
-            do { operationHistory = try OperationAudit.read(root:files.root).filter { ["operation_result","operation_interrupted"].contains($0["type"] as? String ?? "") }.suffix(200).reversed().compactMap(OperationDetail.init) }
-            catch { operationHistory = []; self.error = error.localizedDescription }
+            reloadOperationHistory()
             if !files.warnings.isEmpty { error = files.warnings.joined(separator:"\n") }
         }
         catch { self.error = error.localizedDescription }
+    }
+    func reloadOperationHistory() {
+        guard let files else { return }
+        do { operationHistory = try OperationAudit.read(root:files.root).reversed().compactMap(OperationDetail.init) }
+        catch { operationHistory = []; self.error = error.localizedDescription }
     }
     func perform(_ body: (StudyFiles) throws -> Void) {
         guard !busy, let files else { return }

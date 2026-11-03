@@ -27,6 +27,13 @@ final class IOSCalibrationPort: CalibrationPort {
         if beforeSave { issues += link.monitor?.issues(now:BluetoothEngine.now()) ?? ["缺少全程静止监测"] }
         return issues
     }
+    func recoveryCheck() -> CalibrationCheck {
+        let now = BluetoothEngine.now()
+        var check = link.pose.calibrationCheck(now:now)
+        check.failures += link.monitor?.issues(now:now) ?? ["缺少全程静止监测"]
+        return check
+    }
+    func resetVerificationWindow() { link.pose = PoseWindow() }
     func write(_ register: Int, _ value: Int, completion: @escaping (Bool,String) -> Void) {
         guard connected, let engine else { completion(false,"连接或批次已变化"); return }
         engine.controlWrite(link,register,value,settleMS:100,completion:completion)
@@ -36,25 +43,22 @@ final class IOSCalibrationPort: CalibrationPort {
         guard let engine, engine.batch?.operationID == operationID else { return }
         if name == "starting" { link.monitor = CalibrationMonitor(start:BluetoothEngine.now(),initial:link.pose.mean) }
         if name == "saving_without_second_unlock" { engine.batch?.report["pre_save_mean_g"] = link.pose.mean }
-        engine.batch?.message = link.name+"："+["waiting_unlock":"检查姿态","starting":"启动校准","waiting_save":"请继续保持不动，等待保存","saving_without_second_unlock":"保存前复核通过，提交保存","post_save_verification":"保存后静态窗口与回读","verified_static":"静态复核通过","failed":"未通过，查看逐台原因"][name,default:name]
+        if name == "recovering_before_save" || name == "recovering_after_save" {
+            engine.batch?.report[name+"_entered"] = true
+        }
+        engine.batch?.message = link.name+"："+["waiting_unlock":"检查姿态","starting":"启动校准","waiting_save":"请继续保持不动，等待保存","recovering_before_save":"等待数据恢复及新的3秒稳定窗口（最多延长8秒），尚未保存","saving_without_second_unlock":"保存前复核通过，提交保存","post_save_verification":"已提交保存，采集新的静态窗口","recovering_after_save":"已提交保存，等待恢复后重新复核（最多延长8秒）","post_save_readback":"稳定窗口通过，回读配置","verified_static":"静态复核通过","failed":"未通过，查看逐台原因"][name,default:name]
         engine.auditOperation("calibration_phase",["phase":name,"elapsed_ns":BluetoothEngine.now()])
     }
     func verifySaved(_ completion: @escaping (Bool,String) -> Void) {
-        later(500) { [self] in
-            guard connected else { completion(false,"已提交保存，保存后连接变化；结果待核验"); return }
-            link.pose = PoseWindow()
-            later(3200) { [self] in
-                guard connected, let engine else { completion(false,"已提交保存，静态窗口中断；结果待核验"); return }
-                engine.batch?.report["post_wait_mean_g"] = link.pose.mean
-                engine.controlReadMany(link,[0x05,0x01,0x03,0x23,0x24,0x96]) { [self] ok,why in
-                    guard connected else { completion(false,"保存后连接变化，不能确认结果"); return }
-                    var issues = stableIssues(beforeSave:true)
-                    if link.registers[0x23] != orient { issues.append("安装方向与操作前不一致") }
-                    if link.registers[0x96] != 0 { issues.append("惯性输出回读不匹配") }
-                    if !ok { issues.append(why) }
-                    completion(issues.isEmpty,issues.isEmpty ? "三指令流程及静态复核通过；内部完成应答未知":"已提交保存，后续复核未通过："+issues.joined(separator:"；"))
-                }
-            }
+        guard connected, let engine else { completion(false,"保存后连接变化，结果待核验"); return }
+        engine.batch?.report["post_wait_mean_g"] = link.pose.mean
+        engine.controlReadMany(link,[0x05,0x01,0x03,0x23,0x24,0x96]) { [self] ok,why in
+            guard connected else { completion(false,"保存后连接变化，不能确认结果"); return }
+            var issues: [String] = []
+            if link.registers[0x23] != orient { issues.append("安装方向与操作前不一致") }
+            if link.registers[0x96] != 0 { issues.append("惯性输出回读不匹配") }
+            if !ok { issues.append(why) }
+            completion(issues.isEmpty,issues.isEmpty ? "配置回读通过":issues.joined(separator:"；"))
         }
     }
 }
@@ -134,6 +138,8 @@ extension BluetoothEngine {
         guard let d = links[id] else { finishOperation(false,"设备状态缺失"); return }
         b.generation = d.generation; b.message = "第\(b.completed+1)/\(b.total)台 · \(d.name) · 读取旧值"
         b.report = ["operation_id":b.operationID,"batch_id":b.id,"address":id.uuidString,"name":d.name,"type":b.calibrate ? "accelerometer_calibration":"configuration","before":operationSnapshot(d),"started_ns":Self.now(),"rewrite":b.rewrite,"save_submitted":false,"internal_calibration_completion_known":false,"write_completion_meaning":"local_submission_and_settling_not_peripheral_acknowledgement"]
+        b.report["calibration_policy"] = "bounded_stable_window_recovery_v2"
+        b.report["recovery_limit_ms_per_stage"] = CalibrationController.recoveryLimitMS
         guard auditOperation("operation_started",b.report) else { return }
         guard d.connected && d.initialized && d.wanted && !d.closing else { finishOperation(false,"未执行：设备尚未就绪"); return }
         guard WitProtocol.supportedFirmware(d.firmware) else { finishOperation(false,"未执行：仅支持已核实固件10080.1.21 / 10080.1.22"); return }
@@ -177,11 +183,20 @@ extension BluetoothEngine {
         var report = b.report; report["result"] = why; report["verified"] = ok && !b.calibrate; report["static_check_passed"] = b.calibrate ? ok : false; report["ended_ns"] = Self.now()
         if let d = links[id] {
             report["after"] = operationSnapshot(d)
+            if b.calibrate {
+                report["final_window_issues"] = d.pose.issues(now:Self.now(),tolerance:0.05)
+                report["final_window_passed"] = d.pose.issues(now:Self.now(),tolerance:0.05).isEmpty
+            }
             if let m = d.monitor { report["motion_monitor"] = ["samples":m.count,"max_gap_ms":m.maxGapMS,"max_gyro_dps":m.maxGyro,"max_accel_change_g":m.maxDeviation] }
             d.monitor = nil; d.lastOperation = why
         }
         if audit, let root {
-            do { try OperationAudit.append(root:root,type:"operation_result",details:report,at:Self.wall()) }
+            do {
+                let at = Self.wall()
+                try OperationAudit.append(root:root,type:"operation_result",details:report,at:at)
+                let row: [String:Any] = ["type":"operation_result","wall_ms":at,"details":report]
+                DispatchQueue.main.async { self.onOperationResult?(row) }
+            }
             catch { b.cancelled = true; message = "结果审计保存失败："+error.localizedDescription }
         }
         operationResults.append((links[id]?.name ?? id.uuidString)+"："+why)

@@ -52,6 +52,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     var referenceGeneration = UUID()
     var onReferences: (([String:SensorBinding],String,Bool) -> Void)?, onMovement: ((MovementReport,String,String) -> Void)?
     var onOperationFinished: (() -> Void)?, onRequestFinished: (() -> Void)?
+    var onOperationResult: (([String:Any]) -> Void)?
     var recordingDiagnostic = true, recordingAssignment: Assignment?, recordingRoster: [String:SensorBinding] = [:], overMinute = false
     var onSnapshot: ((EngineSnapshot) -> Void)?, onSaved: (() -> Void)?
     static func now() -> UInt64 { DispatchTime.now().uptimeNanoseconds }

@@ -50,9 +50,36 @@ final class WorkflowUITests: XCTestCase {
         XCTAssertTrue(app.buttons["应用 / 重试未达标设备"].waitForExistence(timeout:5))
         XCTAssertFalse(app.buttons["应用 / 重试未达标设备"].isEnabled)
         attach(app,"配置与校准入口")
+        let results = app.buttons["calibrationResults"]
+        for _ in 0..<5 { if results.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(results.isHittable); results.tap()
+        XCTAssertTrue(app.navigationBars["加速度校准结果"].waitForExistence(timeout:5))
+        XCTAssertTrue(app.staticTexts["calibrationResultsEmpty"].exists)
+        attach(app,"校准结果独立入口")
         app.terminate(); app.launch()
         app.tabBars.buttons["采集"].tap()
         XCTAssertTrue(app.staticTexts["S_UI_TEST · 0/120条合格"].waitForExistence(timeout:8))
+    }
+    func testCalibrationResultDetailsWithInMemoryFixture() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages","(zh-Hans)","-AppleLocale","zh_CN","--calibration-ui-fixture"]
+        addUIInterruptionMonitor(withDescription:"System Bluetooth prompt") { alert in
+            for title in ["允许","Allow","好","OK"] where alert.buttons[title].exists { alert.buttons[title].tap(); return true }
+            return false
+        }
+        app.launch(); XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout:15))
+        app.tabBars.buttons["设置"].tap()
+        let results = app.buttons["calibrationResults"]
+        for _ in 0..<5 { if results.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(results.isHittable); results.tap()
+        let device = app.buttons["calibrationResult_UI_CALIBRATION"]
+        XCTAssertTrue(device.waitForExistence(timeout:5)); device.tap()
+        XCTAssertTrue(app.navigationBars["校准结果详情"].waitForExistence(timeout:5))
+        XCTAssertTrue(app.staticTexts["保存后静态复核通过"].exists)
+        XCTAssertTrue(app.staticTexts["+0.01000"].exists)
+        attach(app,"校准结果与三轴变化量（模拟数据）")
+        app.terminate()
     }
     private func attach(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot:app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)

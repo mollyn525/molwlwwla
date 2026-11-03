@@ -53,12 +53,3 @@ struct RecordDetail {
         devices.sort { (order.firstIndex(of:$0.role) ?? 99) < (order.firstIndex(of:$1.role) ?? 99) }
     }
 }
-struct OperationDetail: Identifiable {
-    var id: String, title: String, result: String, passed: Bool, saveSubmitted: Bool, at: Int64
-    init?(_ row: [String:Any]) {
-        guard let d = row["details"] as? [String:Any], let id = d["operation_id"] as? String else { return nil }
-        self.id = id; title = (d["name"] as? String ?? "设备")+" · "+((d["type"] as? String == "configuration") ? "配置":"加速度校准")
-        result = d["result"] as? String ?? "结果待核验"; passed = d["verified"] as? Bool == true || d["static_check_passed"] as? Bool == true
-        saveSubmitted = d["save_submitted"] as? Bool ?? false; at = (row["wall_ms"] as? NSNumber)?.int64Value ?? 0
-    }
-}

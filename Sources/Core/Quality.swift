@@ -92,6 +92,12 @@ public struct QueryScheduler {
     }
 }
 public struct PoseSample { public let ns: UInt64; public let acceleration: [Double]; public let speed: Double }
+private enum PoseIssue: String {
+    case samples = "静态样本不足60帧", stale = "惯性数据超过200ms未更新", short = "连续静态窗口不足2.8秒", empty = "没有惯性数据"
+    case motion = "角速度达到1°/s", deviation = "加速度相对窗口均值波动超过0.04g", gravity = "重力模长不在0.9–1.1g"
+    case gap = "静态窗口有200ms以上数据缺口", pose = "原始+Z参考姿态不满足门限", invalid = "静态数据非有限值或时间倒退"
+    var recoverable: Bool { [.samples,.stale,.short,.empty,.gap].contains(self) }
+}
 public struct PoseWindow {
     private var samples: [PoseSample] = []
     public init() {}
@@ -102,19 +108,26 @@ public struct PoseWindow {
     }
     public var mean: [Double] { (0..<3).map { i in samples.isEmpty ? 0 : samples.reduce(0) { $0+$1.acceleration[i] }/Double(samples.count) } }
     /// Specific failure conditions are retained, including cases missing in the Android r3 audit.
-    public func stabilityIssues(now: UInt64) -> [String] {
-        var issues: [String] = []; let avg = mean
-        if samples.count < 60 { issues.append("静态样本不足60帧") }
+    private func issueCodes(now: UInt64) -> [PoseIssue] {
+        var issues: [PoseIssue] = []; let avg = mean
+        if samples.count < 60 { issues.append(.samples) }
         if let first = samples.first, let last = samples.last {
-            if now < last.ns || now-last.ns > 200_000_000 { issues.append("惯性数据超过200ms未更新") }
-            if now < first.ns || now-first.ns < 2_800_000_000 { issues.append("连续静态窗口不足2.8秒") }
-        } else { issues.append("没有惯性数据") }
-        if samples.contains(where: { $0.speed >= 1 }) { issues.append("角速度达到1°/s") }
-        if samples.contains(where: { sample in sqrt((0..<3).reduce(0) { sum,i in sum+pow(sample.acceleration[i]-avg[i],2) }) > 0.04 }) { issues.append("加速度相对窗口均值波动超过0.04g") }
+            if now < last.ns || now-last.ns > 200_000_000 { issues.append(.stale) }
+            if now < first.ns || now-first.ns < 2_800_000_000 { issues.append(.short) }
+        } else { issues.append(.empty) }
+        if samples.contains(where: { !$0.speed.isFinite || !$0.acceleration.allSatisfy(\.isFinite) || $0.ns > now }) || zip(samples,samples.dropFirst()).contains(where: { pair in pair.1.ns < pair.0.ns }) { issues.append(.invalid) }
+        if samples.contains(where: { $0.speed >= 1 }) { issues.append(.motion) }
+        if samples.contains(where: { sample in sqrt((0..<3).reduce(0) { sum,i in sum+pow(sample.acceleration[i]-avg[i],2) }) > 0.04 }) { issues.append(.deviation) }
         let norm = sqrt(avg.reduce(0) { $0+$1*$1 })
-        if norm < 0.9 || norm > 1.1 { issues.append("重力模长不在0.9–1.1g") }
-        if zip(samples,samples.dropFirst()).contains(where: { pair in pair.1.ns < pair.0.ns || pair.1.ns-pair.0.ns >= 200_000_000 }) { issues.append("静态窗口有200ms以上数据缺口") }
+        if !samples.isEmpty && (norm < 0.9 || norm > 1.1) { issues.append(.gravity) }
+        if zip(samples,samples.dropFirst()).contains(where: { pair in pair.1.ns < pair.0.ns || pair.1.ns-pair.0.ns >= 200_000_000 }) { issues.append(.gap) }
         return issues
+    }
+    public func stabilityIssues(now: UInt64) -> [String] { issueCodes(now:now).map(\.rawValue) }
+    public func calibrationCheck(now: UInt64, tolerance: Double = 0.05) -> CalibrationCheck {
+        var codes = issueCodes(now:now); let avg = mean
+        if !samples.isEmpty && (abs(avg[0]) > tolerance || abs(avg[1]) > tolerance || abs(avg[2]-1) > tolerance) { codes.append(.pose) }
+        return CalibrationCheck(pending:codes.filter(\.recoverable).map(\.rawValue),failures:codes.filter { !$0.recoverable }.map(\.rawValue))
     }
     public func issues(now: UInt64, tolerance: Double = 0.08) -> [String] {
         var result = stabilityIssues(now: now); let avg = mean

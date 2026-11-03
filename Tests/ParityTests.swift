@@ -272,6 +272,8 @@ private final class FakeCalibrationPort: CalibrationPort {
     var badBefore = false, badAfter = false, duplicate = false, verifyOK = true, verifications = 0
     func later(_ milliseconds: UInt64, _ action: @escaping () -> Void) { events.append((nowMS+milliseconds,action)) }
     func stableIssues(beforeSave: Bool) -> [String] { (beforeSave ? badAfter:badBefore) ? ["movement"]:[] }
+    func recoveryCheck() -> CalibrationCheck { CalibrationCheck(failures:badAfter ? ["movement"]:[]) }
+    func resetVerificationWindow() {}
     func write(_ register: Int, _ value: Int, completion: @escaping (Bool,String) -> Void) {
         writes.append((nowMS,register,value)); later(writeDelay) { completion(true,"local submission"); if self.duplicate { completion(true,"duplicate callback") } }
     }
