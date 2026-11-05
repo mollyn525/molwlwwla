@@ -39,7 +39,7 @@ struct BodyMapView: View {
         guard d.connected else { return d.wanted ? .red:.gray }
         if !d.initialized || d.maintenance || model.engineState.passive { return .blue }
         if d.ages.prefix(2).contains(where: { ($0 ?? 2000) >= 2000 }) { return .red }
-        if !QualityPolicy.current.recentDataHealthy(d.ages) { return .orange }
+        if !QualityPolicy.current.recentDataHealthy(d.ages) || !QualityPolicy.current.recentRatesPass(d.hz) { return .orange }
         return .green
     }
 }

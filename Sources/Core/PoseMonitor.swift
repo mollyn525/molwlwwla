@@ -59,6 +59,9 @@ public struct PoseMonitor {
         guard values.allSatisfy({abs($0/mean-1) <= 0.1}) else { throw LabError.invalid("磁场窗口波动超过10%，暂不保存基线") }
         baseline = mean; baselineID = UUID().uuidString; baselineNS = now
     }
+    public mutating func clearMagnetic() {
+        ms = []; mNS = nil; lastM = nil; baseline = 0; baselineID = ""; baselineNS = 0
+    }
     public mutating func revert() { headingID = ""; yawOffset = 0; headingNS = 0 }
     public mutating func clear() { self = PoseMonitor() }
     public func adjusted(_ input: [Double]) throws -> [Double] {

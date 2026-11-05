@@ -99,6 +99,8 @@ extension BluetoothEngine {
         do { try magAudit("operation_tx_intent",["hex":WitProtocol.hex(packet),"index":job.index,"phase":String(describing:job.phase)]) }
         catch { interruptMag("操作审计失败"); return }
         d.peripheral.writeValue(packet,for:writer,type:.withoutResponse)
+        do { try magAudit("operation_tx_submitted",["hex":WitProtocol.hex(packet),"peripheral_acknowledged":false]) }
+        catch { interruptMag("指令已提交，但写入审计失败"); return }
         job.index += 1; job.due = Self.now()+WitMagSequence.intervalNS
         if job.index == sequence.count {
             if job.phase == .starting { job.phase = .rotating; job.message = "依次绕 X、Y、Z 指北轴慢转，完成后手动结束" }
@@ -128,6 +130,16 @@ extension BluetoothEngine {
         self.headingToken = nil
         for d in self.links.values { d.live = LiveMonitor(); d.live.setType(d.registers[0x72]) }
     } }
+    private func commitReferences(_ devices: [Link], _ poses: [PoseMonitor], _ action: String) throws {
+        guard let root else { throw LabError.invalid("缺少参考操作审计目录") }
+        let changes: [[String:Any]] = zip(devices,poses).map { d,pose in
+            ["address":d.peripheral.identifier.uuidString,"before":d.live.pose.state,"after":pose.state]
+        }
+        try OperationAudit.append(root:root,type:"monitor_reference",details:["action":action,"devices":changes,"hardware_commands":false],at:Self.wall())
+        for (d,pose) in zip(devices,poses) {
+            if action == "baseline" { d.live.pose = pose } else { d.live.changeHeading(pose) }
+        }
+    }
     func heading(_ ids: [String], revert: Bool, baseline: Bool = false) { work.async {
         let selected = ids.compactMap(UUID.init(uuidString:)).compactMap { self.links[$0] }
         guard self.idle(), self.appActive, !self.passive, !selected.isEmpty, selected.count == ids.count,
@@ -136,8 +148,10 @@ extension BluetoothEngine {
             self.message = "请核对选中的设备并结束当前操作"; return
         }
         if revert {
-            for d in selected { var pose = d.live.pose; pose.revert(); d.live.changeHeading(pose) }
-            self.message = "已恢复所选设备的原始航向"; return
+            let poses = selected.map { d -> PoseMonitor in var pose = d.live.pose; pose.revert(); return pose }
+            do { try self.commitReferences(selected,poses,"revert"); self.message = "已恢复所选设备的原始航向" }
+            catch { self.message = error.localizedDescription }
+            return
         }
         let token = UUID(), placed = Self.now(), generations = selected.map(\.generation)
         self.headingToken = token; self.message = "已确认放稳，请保持姿态约3秒"
@@ -154,9 +168,7 @@ extension BluetoothEngine {
                     catch { throw LabError.invalid(d.name+"："+error.localizedDescription) }
                     poses.append(pose)
                 }
-                for (d,pose) in zip(selected,poses) {
-                    if baseline { d.live.pose = pose } else { d.live.changeHeading(pose) }
-                }
+                try self.commitReferences(selected,poses,baseline ? "baseline" : "reset")
                 self.message = baseline ? "已保存观察基线" : "已将所选设备当前航向设为零"
             } catch { self.message = error.localizedDescription }
         }

@@ -25,7 +25,7 @@ public struct LiveMonitor {
     public private(set) var fieldReason = "等待磁场数据", type: Int?
     public init() {}
     public mutating func setType(_ newType: Int?) {
-        if type != newType { field = nil; magPoints = []; fieldReason = "等待新磁场数据" }
+        if type != newType { pose.clearMagnetic(); field = nil; magPoints = []; fieldReason = "等待新磁场数据" }
         type = newType
     }
     private static func append(_ points: inout [MonitorPoint], _ ns: UInt64, _ values: [Double]?) {

@@ -72,7 +72,8 @@ private struct SensorAxes: View {
 struct MonitorView: View {
     @EnvironmentObject var model: AppModel
     @State var selection = ""
-    @State private var mode = 0, prompt: HeadingAction?
+    @State private var mode = 0
+    @State private var prompt: HeadingAction?
     private enum HeadingAction: String, Identifiable {
         case reset, all, baseline, revertAll
         var id: String { rawValue }
@@ -86,6 +87,7 @@ struct MonitorView: View {
         let snap = d?.live.pose.snapshot(now:now,connected:d?.connected == true)
         let magFresh = d?.connected == true && (d?.ages[2] ?? nil).map { $0 < 500 } == true
         List {
+            if model.engineState.headingPending { Label("已确认放稳，请保持当前姿态约 3 秒",systemImage:"timer").foregroundStyle(.orange) }
             Section {
                 Picker("设备",selection:$selection) { Text("选择设备").tag(""); ForEach(devices) { Text(model.monitorLabel($0)).tag($0.id) } }
                 Picker("监测项目",selection:$mode) { Text("Mag Norm").tag(0); Text("Orientation").tag(1) }.pickerStyle(.segmented)
@@ -137,7 +139,8 @@ struct MonitorView: View {
 struct MagneticCalibrationView: View {
     @EnvironmentObject var model: AppModel
     @State var selection = ""
-    @State private var confirm = false, finish = false
+    @State private var confirm = false
+    @State private var finish = false
     var body: some View {
         let s = model.engineState, job = s.magPhase
         let held = job.busy || job == .uncertain

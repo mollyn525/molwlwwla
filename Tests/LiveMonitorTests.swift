@@ -33,6 +33,28 @@ final class LiveMonitorTests: XCTestCase {
         XCTAssertEqual(try PoseMonitor.euler(m.pose.adjusted(q))[2],80,accuracy:1e-7)
         XCTAssertNil(m.pose.snapshot(now:4*secondNS,connected:true).q)
     }
+    func testDerivedRecordingKeepsRawBytesAndTimes() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let files = try StudyFiles(root:root)
+        let wr = try SessionWriter(root:files.sessions,metadata:["diagnostic":true,"live_monitor":PoseMonitor.definition])
+        let packet = try WitProtocol.unhex("55713A00100E40ED000000000000000000000000")
+        let frame = WitFrame(packet)
+        wr.raw(id:"fixture",ns:100,wall:1,data:packet)
+        wr.frame(id:"fixture",ns:100,wall:1,frame:frame,verified:true)
+        var m = LiveMonitor(); m.setType(6); m.magnetic(100,frame.words.prefix(3).map(Double.init))
+        wr.derived(m.row(id:"fixture",ns:100,magnetic:true))
+        let done = expectation(description:"flush raw and derived")
+        wr.close(summary:["diagnostic":true,"accepted":false,"quality_passed":false,"status":"diagnostic"]) { _ in done.fulfill() }
+        wait(for:[done],timeout:5)
+        func row(_ name: String) throws -> [String:Any] { try JSONFile.read(wr.directory.appendingPathComponent(name)) }
+        XCTAssertEqual(try row("notifications.jsonl")["hex"] as? String,WitProtocol.hex(packet))
+        XCTAssertEqual(try row(PoseMonitor.file)["mag_norm_au"] as? Double,1)
+        XCTAssertEqual(try row(PoseMonitor.file)["source_ns"] as? Int,100)
+        let csv = try String(contentsOf:wr.directory.appendingPathComponent("samples.csv"),encoding:.utf8)
+        XCTAssertTrue(csv.contains(",3600,-4800,0,"))
+        XCTAssertTrue(csv.contains(WitProtocol.hex(packet)))
+    }
     func testManualCalibrationSequences() {
         XCTAssertEqual(WitMagSequence.start.map(WitProtocol.hex),["FFAA6988B5","FFAA010700"])
         XCTAssertEqual(WitMagSequence.finish.map(WitProtocol.hex),["FFAA6988B5","FFAA010000","FFAA000000"])

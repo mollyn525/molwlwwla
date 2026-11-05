@@ -92,7 +92,7 @@ public enum ArchiveExporter {
             }
             let effective: [String: Any] = ["accepted":complete && trial.accepted,"quality_passed":complete && trial.qualityPassed,"status":trial.status,"review_revision":trial.reviews.count,"source":"immutable_summary_plus_review"]
             manifest.append(try zip.add(name: prefix+"/effective-result-at-export.json", data: JSONFile.bytes(effective)))
-            manifest.append(try zip.add(name: prefix+"/file-integrity-at-export.json", data: JSONFile.bytes(["required_files":required,"missing_files":missing,"complete":complete])))
+            manifest.append(try zip.add(name: prefix+"/file-integrity-at-export.json", data: JSONFile.bytes(["required_files":expected,"missing_files":missing,"complete":complete])))
             var row: [String: Any] = ["directory":trial.id,"archive_path":prefix,"diagnostic":trial.diagnostic,"counted_for_slot":false,"accepted":complete && trial.accepted,"integrity_passed":complete]
             if let a = trial.assignment {
                 row["assignment"] = try JSONFile.object(a)
