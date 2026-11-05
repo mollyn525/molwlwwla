@@ -21,7 +21,7 @@ public struct OperationDetail: Identifiable {
         self.id = id; name = d["name"] as? String ?? "设备"; address = d["address"] as? String ?? "未记录设备标识"
         batchID = d["batch_id"] as? String ?? "历史批次"
         calibration = d["type"] as? String == "accelerometer_calibration"
-        title = name+" · "+(calibration ? "加速度校准":"配置")
+        title = name+" · "+(calibration ? "加速度校准":(d["type"] as? String == "magnetic_calibration" ? "磁场校准" : "配置"))
         result = d["result"] as? String ?? "结果待核验"
         saveSubmitted = d["save_submitted"] as? Bool == true
         passed = row["type"] as? String != "operation_interrupted" && (calibration ? (saveSubmitted && d["static_check_passed"] as? Bool == true) : d["verified"] as? Bool == true)

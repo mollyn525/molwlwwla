@@ -10,6 +10,7 @@ struct SettingsView: View {
     var body: some View {
         List {
             StatusBanner()
+            Section { NavigationLink("单台磁场校准") { MagneticCalibrationView() }.accessibilityIdentifier("singleMagCalibration") }
             Section("异常提示") { Text("声音关闭 · 振动关闭"); Text("保留界面告警及质量事件。") }
             Section("手机查询上限") {
                 Stepper("\(model.queryHz)次/秒/台",value:$model.queryHz,in:40...200,step:5).disabled(model.busy)
@@ -35,7 +36,7 @@ struct SettingsView: View {
             Section("独立版本 \(model.version)") {
                 NavigationLink("连接诊断 / 导出日志") { ConnectionLogView() }
                 Text("保留本App现有任务、绑定与历史数据；ZIP通过系统分享或“文件”保存。")
-                Text("手机接收时间不能证明四项内部同步或15台间同步；四元数范数正常不代表姿态正确。磁场校准、归零、恢复出厂和固件升级不开放。").font(.caption).foregroundStyle(.secondary)
+                Text("手机接收时间不能证明四项内部同步或15台间同步；四元数范数正常不代表姿态正确。磁场校准结果可在操作日志中查看。").font(.caption).foregroundStyle(.secondary)
             }
         }.buttonStyle(.borderless).navigationTitle("设置")
          .confirmationDialog("应用50Hz / 九轴配置",isPresented:$configure) { Button("对选中设备应用并回读") { model.batch(calibrate:false) } } message: { Text("只修改不符合模板的设备，逐台独立记录结果，保留安装方向。") }

@@ -53,6 +53,13 @@ public final class StudyFiles {
         for key in next.keys { next[key]?.wearConfirmed = false; next[key]?.reference = nil; next[key]?.referenceID = nil; next[key]?.referenceStudyID = nil; next[key]?.referenceDiagnostic = nil; next[key]?.movement = nil; next[key]?.gravity = nil; next[key]?.wearNote = nil; next[key]?.wearConfirmedMS = nil; next[key]?.wearPendingMS = Int64(Date().timeIntervalSince1970*1000) }
         try saveRoster(next)
     }
+    public func invalidateWear(peripheralID: String) throws {
+        guard let entry = roster.first(where: { $0.value.peripheralID == peripheralID }) else { return }
+        var next = roster
+        next[entry.key] = SensorBinding(peripheralID: peripheralID, name: entry.value.name)
+        try saveRoster(next)
+        try audit("magnetic_calibration_wear_invalidated", ["role":entry.key,"peripheral_id":peripheralID])
+    }
     public func invalidateWear() throws { try resetWear(); try audit("wear_invalidated",[:]) }
     public func audit(_ type: String, _ details: [String:Any]) throws { if let auditWarning { throw LabError.invalid(auditWarning) }; try OperationAudit.append(root:root,type:type,details:details,at:Int64(Date().timeIntervalSince1970*1000)) }
     public func saveReferences(_ values: [String:SensorBinding], studyID: String, diagnostic: Bool, at: Int64) throws {
@@ -138,7 +145,7 @@ public final class SessionWriter {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
         try JSONFile.write(metadata, to: directory.appendingPathComponent("metadata.json"))
         do {
-            for name in ["notifications.jsonl","samples.csv","events.jsonl","relative_pose.csv"] {
+            for name in ["notifications.jsonl","samples.csv","events.jsonl","relative_pose.csv",PoseMonitor.file] {
                 let url = directory.appendingPathComponent(name); guard FileManager.default.createFile(atPath: url.path, contents: nil) else { throw LabError.invalid("创建记录文件失败") }; handles[name] = try FileHandle(forWritingTo: url)
             }
             try handles["samples.csv"]?.write(contentsOf: Data(Self.header.utf8))
@@ -164,6 +171,10 @@ public final class SessionWriter {
         catch { recordError(error) }
     }
     public func frame(id: String, ns: UInt64, wall: Int64, frame: WitFrame, verified: Bool) { append("samples.csv", Data(frame.csv(identifier: id, ns: ns, wall: wall, inertialVerified: verified).utf8), frame: true) }
+    public func derived(_ row: [String:Any]) {
+        do { var bytes = try JSONFile.bytes(row); bytes.append(10); append(PoseMonitor.file, bytes) }
+        catch { recordError(error) }
+    }
     public func relative(id: String, ns: UInt64, quaternion: [Double], reference: String) {
         guard quaternion.count == 4 else { recordError(LabError.invalid("派生姿态维度错误")); return }
         let row = [String(ns),id]+quaternion.map { String($0) }+[reference]

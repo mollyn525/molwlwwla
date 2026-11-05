@@ -34,7 +34,19 @@ struct DevicesView: View {
     @State private var bodyRole: Int?
     var body: some View {
         List {
-            StatusBanner()
+            Section {
+                HStack {
+                    counter("已绑定",model.roster.count)
+                    counter("已连接",model.engineState.devices.filter { $0.wanted && $0.connected }.count)
+                    counter("部位就绪",BodyRole.all.compactMap { model.device($0) }.filter { color($0) == .green }.count)
+                }
+                HStack {
+                    Button("扫描设备"){model.engine.scan()}.disabled(model.busy)
+                    Spacer()
+                    Button("连接已绑定"){model.engine.connect(model.roster.values.map(\.peripheralID))}.disabled(model.busy || model.roster.isEmpty)
+                }
+                NavigationLink("实时监测 · Mag Norm / Orientation") { MonitorView() }.accessibilityIdentifier("liveMonitor")
+            }
             Section {
                 NavigationLink("开始正式收集") { if model.study == nil { CaptureView() } else { CollectionView() } }.font(.headline)
                 BodyMapView(selectedRole:$bodyRole).frame(height:430)
@@ -42,7 +54,7 @@ struct DevicesView: View {
             }
             Section {
                 Text("绑定 \(model.roster.count)/15 · 连接 \(model.engineState.devices.filter(\.connected).count)/15")
-                HStack { Button("扫描设备"){model.engine.scan()}.disabled(model.busy); Button("连接已绑定"){model.engine.connect(model.roster.values.map(\.peripheralID))}.disabled(model.busy || model.roster.isEmpty) }
+                StatusBanner()
                 Button("断开所有设备",role:.destructive){model.engine.disconnect()}.disabled(model.engineState.saving || model.engineState.batch || model.engineState.movement)
                 NavigationLink("少量设备诊断连接"){ DiagnosticPicker() }
             }
@@ -58,11 +70,14 @@ struct DevicesView: View {
                     }
                 }
             }
-            Text("绿色仅表示连接和近期加速度、角速度更新；频率须各 >40 Hz，佩戴与参考姿态另行检查。").font(.footnote).foregroundStyle(.secondary)
+            Text("部位就绪表示已连接、初始化，近期加速度和角速度均有更新且各 >40 Hz。佩戴与参考姿态见部位详情。").font(.footnote).foregroundStyle(.secondary)
         }.buttonStyle(.borderless).navigationTitle("设备").navigationBarTitleDisplayMode(.inline)
          .navigationDestination(item:$bodyRole) { index in RoleView(role:BodyRole.all[index]) }
     }
-    func color(_ d:DeviceSnapshot?) -> Color { guard let d else{return .gray}; if !d.connected {return .red}; if !d.initialized {return .blue}; return d.ages.allSatisfy { $0 != nil && $0! < 500 } ? .green : .orange }
+    private func counter(_ label: String, _ count: Int) -> some View {
+        VStack(alignment:.leading) { Text("\(count)/15").font(.title3.bold()).monospacedDigit(); Text(label).font(.caption).foregroundStyle(.secondary) }.frame(maxWidth:.infinity,alignment:.leading)
+    }
+    func color(_ d:DeviceSnapshot?) -> Color { guard let d else{return .gray}; if !d.connected {return .red}; if !d.initialized {return .blue}; return d.wanted && !d.maintenance && QualityPolicy.current.recentDataHealthy(d.ages) && QualityPolicy.current.recentRatesPass(d.hz) ? .green : .orange }
 }
 struct DiagnosticPicker: View {
     @EnvironmentObject var model: AppModel
@@ -119,6 +134,7 @@ struct RoleView: View {
     var body: some View {
         List {
             if let d = model.device(role) {
+                NavigationLink("Mag Norm / Orientation") { MonitorView(selection:d.id) }
                 Section("当前状态") { Text(d.name);Text(d.status);Text("固件 \(d.firmware)"); if !d.lastError.isEmpty { Text("最近失败：\(d.lastError)").foregroundStyle(.orange) }; ForEach(d.issues,id:\.self){Text($0).foregroundStyle(.orange)} }
                 Section("实时数据") {
                     value("加速度 g",d.acceleration); value("角速度 °/s",d.gyro); value("磁场原始值",d.magnetic); value("四元数",d.quaternion)

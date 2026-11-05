@@ -170,7 +170,7 @@ extension BluetoothEngine {
     }
     func beginBatch(calibrate: Bool, rewrite: Bool = false, placementConfirmed: Bool = false) { work.async {
         defer { self.notifyRequestFinished() }
-        guard self.idle(), self.appActive, !self.passive, let root = self.root else { self.message = "请保持前台，结束其他操作并正常连接设备"; return }
+        guard self.idle(), self.magneticJob.phase != .uncertain, self.appActive, !self.passive, let root = self.root else { self.message = "请保持前台，结束其他操作并正常连接设备"; return }
         guard !calibrate || placementConfirmed else { self.message = "先确认原始+Z朝上放稳及全组保持时长"; return }
         let selected = self.links.values.filter(\.wanted).sorted { $0.name < $1.name }
         guard !selected.isEmpty, selected.count <= 15 else { self.message = "请选择1–15台设备"; return }
@@ -182,7 +182,7 @@ extension BluetoothEngine {
                 "addresses":b.order.map(\.uuidString),"rewrite":rewrite,"execution_mode":calibrate ? "parallel_per_device_v1":"sequential_configuration"],at:Self.wall())
         } catch { self.message = "审计无法保存，操作未启动："+error.localizedDescription; return }
         self.batch = b; self.operationResults = []
-        for d in selected { d.maintenance = true; d.goodSince = 0 }
+        for d in selected { d.live = LiveMonitor(); d.live.setType(d.registers[0x72]); d.maintenance = true; d.goodSince = 0 }
         if calibrate {
             let entries: [(String,PreparedCalibrationPort)] = selected.map { d in
                 (d.peripheral.identifier.uuidString,IOSCalibrationPort(engine:self,link:d,operation:b.operations[d.peripheral.identifier]!))

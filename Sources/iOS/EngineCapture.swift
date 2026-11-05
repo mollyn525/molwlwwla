@@ -39,7 +39,7 @@ extension BluetoothEngine {
     }
     func beginRecording(root: URL, roster: [String:SensorBinding], study: Study?, assignment: Assignment?, seconds: Int, classificationOK: Bool) {
         defer { notifyRequestFinished() }
-        guard idle(), appActive, !passive, central.state == .poweredOn else { message = "请保持前台并结束其他操作，正常连接后再录制"; return }
+        guard idle(), magneticJob.phase != .uncertain, appActive, !passive, central.state == .poweredOn else { message = "请保持前台并结束其他操作，正常连接后再录制"; return }
         let diagnostic = assignment == nil
         guard !diagnostic || seconds == 0 || (5...600).contains(seconds) else { message = "限时诊断5–600秒，或选择手动结束"; return }
         refreshStorage()
@@ -58,6 +58,8 @@ extension BluetoothEngine {
                 "recorded_ms":Self.wall(),"time_zone_offset_seconds":TimeZone.current.secondsFromGMT(),"roster":try JSONSerialization.jsonObject(with:JSONEncoder().encode(roster)),
                 "internal_sampling_synchronization_verified":false,"sampling_clock":"phone_receive_monotonic_not_sensor_sampling","host_query_hz":queryHz,
                 "relative_pose_method":"conjugate_normalized_reference_times_normalized_current; neutral_reference_not_anatomical_frame"]
+            meta["live_monitor"] = PoseMonitor.definition
+            meta["magnetic_reference_ut"] = FieldReading.reference
             meta["devices"] = selected.map { id,d in ["address":id.uuidString,"name":d.name,"firmware":d.firmware,"settings":Dictionary(uniqueKeysWithValues:d.settings.map { (String($0.key),$0.value) })] as [String:Any] }
             meta["formal_start_policy"] = "15_ready_connections_and_inertial_gt40; wear_reference_configuration_are_reminders"
             if !diagnostic {

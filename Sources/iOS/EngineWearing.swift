@@ -3,7 +3,7 @@ import BaduanjinCore
 
 extension BluetoothEngine {
     func captureReference(roster: [String:SensorBinding], studyID: String, diagnostic: Bool) { work.async {
-        guard self.idle(), self.appActive, !self.passive else { self.message = "请先结束其他操作并保持前台"; self.notifyRequestFinished(); return }
+        guard self.idle(), self.magneticJob.phase != .uncertain, self.appActive, !self.passive else { self.message = "请先结束其他操作并保持前台"; self.notifyRequestFinished(); return }
         let selected = roster.filter { _,b in guard let id = UUID(uuidString:b.peripheralID) else { return false }; return self.links[id]?.wanted == true }
         guard !selected.isEmpty, diagnostic || selected.count == 15 else { self.message = "完整参考需要15个已绑定且选定的部位"; self.notifyRequestFinished(); return }
         let epochs = Dictionary(uniqueKeysWithValues:selected.compactMap { role,b -> (String,UUID)? in
@@ -33,7 +33,7 @@ extension BluetoothEngine {
         }
     } }
     func inspectRole(_ role: String, roster: [String:SensorBinding]) { work.async {
-        guard self.idle(), self.appActive, let b = roster[role], b.reference != nil, b.referenceID != nil,
+        guard self.idle(), self.magneticJob.phase != .uncertain, self.appActive, let b = roster[role], b.reference != nil, b.referenceID != nil,
               let id = UUID(uuidString:b.peripheralID), let target = self.links[id], target.connected && target.initialized && target.wanted else { self.message = "先完成参考姿态并连接目标部位"; self.notifyRequestFinished(); return }
         let start = Self.now(); self.movementRole = role; self.movementEnd = start+5*secondNS; self.movementRoster = roster
         self.movementWindows = Dictionary(uniqueKeysWithValues:roster.values.map { ($0.peripheralID,MovementWindow(start:start,end:self.movementEnd)) })

@@ -9,7 +9,17 @@ public enum VendorTXT {
         var mag: [Int]?, magNS: UInt64?, qNS: UInt64?, magType: Int?
     }
     public static func magneticScale(_ type: Int?) -> Double? {
-        switch type { case 2: return 0.15; case 3: return 0.013; case 4: return 0.058; case 5: return 0.098; case 6: return 1.0/150; case 7: return 0.02; default: return nil }
+        switch type {
+        case 1: return 0.6
+        case 2, 4: return 0.15
+        case 3: return 0.013
+        case 5: return 0.098
+        case 6: return 1.0/150
+        case 7: return 1.0/120
+        case 8: return 0.02
+        case 111: return 100.0/1024
+        default: return nil
+        }
     }
     private static func clean(_ s: String) -> String { s.replacingOccurrences(of:"\t",with:" ").replacingOccurrences(of:"\r",with:" ").replacingOccurrences(of:"\n",with:" ") }
     private static func fixed(_ x: Double, _ digits: Int) -> String { String(format:"%.*f",locale:Locale(identifier:"en_US_POSIX"),digits,x) }

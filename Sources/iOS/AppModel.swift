@@ -21,7 +21,7 @@ import BaduanjinCore
     private(set) var files: StudyFiles?
     let engine = BluetoothEngine()
     private var cancellation: ExportCancellation?
-    var busy: Bool { pending || engineState.recording || engineState.saving || exporting || engineState.batch || engineState.movement }
+    var busy: Bool { pending || engineState.magPhase.busy || engineState.headingPending || engineState.recording || engineState.saving || exporting || engineState.batch || engineState.movement }
     var book: SlotBook { SlotBook(studyID: study?.id ?? "", trials: trials) }
     init() {
         do {
@@ -46,6 +46,11 @@ import BaduanjinCore
                 var history = self.otherTrends[d.id] ?? [:]
                 for (key,sample) in [("angular_velocity",d.gyro),("magnetic_field",d.magnetic),("quaternion",d.quaternion)] { var rows = history[key] ?? []; rows.append(sample); if rows.count > 120 { rows.removeFirst(rows.count-120) }; history[key] = rows }; self.otherTrends[d.id] = history
             }
+        }
+        engine.onMagPrepare = { [weak self] id, done in
+            guard let self, let files = self.files else { done("无法读取名册"); return }
+            do { try files.invalidateWear(peripheralID:id); self.roster = files.roster; done(nil) }
+            catch { done(error.localizedDescription) }
         }
         engine.onSaved = { [weak self] in self?.reload() }
         engine.onRequestFinished = { [weak self] in self?.pending = false }
@@ -92,10 +97,10 @@ import BaduanjinCore
         guard !busy, let files else { return }
         do { try body(files); reload() } catch { self.error = error.localizedDescription }
     }
-    func create(_ subject: String) { perform { try $0.create(subject: subject,at:BluetoothEngine.wall()) } }
-    func activate(_ id: String) { perform { try $0.activate(id) } }
+    func create(_ subject: String) { perform { try $0.create(subject: subject,at:BluetoothEngine.wall()); engine.clearLiveReferences() } }
+    func activate(_ id: String) { perform { try $0.activate(id); engine.clearLiveReferences() } }
     func rename(_ names: [String]) { perform { try $0.rename(names,at:BluetoothEngine.wall()) } }
-    func bind(role: String, id: String, name: String) { perform { try $0.bind(role:role,id:id,name:name) } }
+    func bind(role: String, id: String, name: String) { perform { try $0.bind(role:role,id:id,name:name); engine.clearLiveReferences() } }
     func retry(_ trial: Trial, reason: String) { perform { try $0.markRetry(id:trial.id,reason:reason,revision:trial.reviews.count,at:BluetoothEngine.wall()) } }
     func diagnostic(seconds: Int) { guard !busy, let files else { return }; pending = true; engine.startDiagnostic(root:files.sessions,roster:roster,study:study,seconds:seconds) }
     func start(action: Int, slot: Int) {
@@ -154,10 +159,14 @@ import BaduanjinCore
             shareURL = destination
         } catch { self.error = "连接诊断导出失败：\(error.localizedDescription)" }
     }
+    func monitorLabel(_ d: DeviceSnapshot) -> String {
+        if let role = BodyRole.all.first(where:{ roster[$0.id]?.peripheralID == d.id }) { return role.name+" · "+d.name }
+        return d.name+" · "+String(d.id.suffix(6))
+    }
     func device(_ role: BodyRole) -> DeviceSnapshot? { guard let id = roster[role.id]?.peripheralID else { return nil }; return engineState.devices.first { $0.id == id } }
     var preflight: PreflightResult {
         let now = BluetoothEngine.now(), stamp = engineState.timestamp
-        return Preflight.evaluate(study:study?.id,nextAction:book.nextAction,roster:roster,devices:engineState.devices.map(\.readiness),idle:!busy,bluetooth:engineState.enabled,freeBytes:engineState.freeBytes,fresh:stamp > 0 && now >= stamp && now-stamp < secondNS,normalMode:!engineState.passive,classificationOK:files?.warnings.isEmpty == true)
+        return Preflight.evaluate(study:study?.id,nextAction:book.nextAction,roster:roster,devices:engineState.devices.map(\.readiness),idle:!busy && engineState.magPhase != .uncertain,bluetooth:engineState.enabled,freeBytes:engineState.freeBytes,fresh:stamp > 0 && now >= stamp && now-stamp < secondNS,normalMode:!engineState.passive,classificationOK:files?.warnings.isEmpty == true)
     }
     var checklist: [String] { preflight.checks.map { ($0.passed ? "✓ ":"待处理 · ")+$0.title+"："+$0.detail } }
     func exportOperations() {

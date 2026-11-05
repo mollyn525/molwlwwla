@@ -7,6 +7,7 @@ struct DeviceSnapshot: Identifiable {
     var ages: [Double?], hz: [Double], acceleration: [Double], gyro: [Double], magnetic: [Double], quaternion: [Double]
     var configurationOK: Bool, firmware: String, issues: [String], lastError: String
     var readiness: DeviceReadiness, maintenance: Bool, lastOperation: String
+    var live = LiveMonitor(), canStartMag = false
     var submittedQueries: Int, backpressureTicks: Int, writeReadyCallbacks: Int
 }
 struct EngineSnapshot {
@@ -18,6 +19,7 @@ struct EngineSnapshot {
     var batch = false, movement = false, batchMessage = "未执行批量操作", queryHz = 90, passive = false
     var recordingDiagnostic = true, recordNumber: Int?, recordAttempt: Int?
     var operationResults: [String] = []
+    var magTarget: String?, magPhase = MagPhase.idle, magMessage = "", headingPending = false
     var parallelCalibration = false, operationProgress: [OperationProgress] = []
 }
 struct OperationProgress: Identifiable {
@@ -36,6 +38,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         var reads: [Int] = [], reading: Int?, readAt: UInt64 = 0, retries = 0, retryAt: UInt64 = 0, stageAt: UInt64 = 0
         var invalidQ = 0, trialStreams: [TrialStream] = [], severity = [0,0,0,0]
         var quaternionWindow = QuaternionWindow(), monitor: CalibrationMonitor?
+        var live = LiveMonitor()
         var generation = UUID(), readyAt: UInt64 = 0, goodSince: UInt64 = 0, disconnectedAt: UInt64 = 0
         var lowSince: [UInt64] = [0,0,0,0], maintenance = false, lastOperation = ""
         var controls: [ControlRequest] = [], control: ControlRequest?, submittedQueries = 0, backpressureTicks = 0, writeReadyCallbacks = 0
@@ -44,6 +47,9 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     }
     let work = DispatchQueue(label: "dev.imulink.ios.bluetooth")
     var central: CBCentralManager!, timer: DispatchSourceTimer?, links: [UUID: Link] = [:], found: [UUID: String] = [:]
+    let magneticJob = MagneticJob()
+    var headingToken: UUID?
+    var onMagPrepare: ((String, @escaping (String?) -> Void) -> Void)?
     var scanning = false, scanGeneration = UUID(), cursor = 0, lastPublish: UInt64 = 0, lastFlush: UInt64 = 0
     var writer: SessionWriter?, targets: [UUID] = [], startNS: UInt64 = 0, actionNS: UInt64 = 0, endNS: UInt64 = 0, fault = false, saving = false
     var message = "请扫描并逐一核对设备编号", appActive = true
@@ -64,8 +70,8 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     override init() {
         super.init(); work.async { self.central = CBCentralManager(delegate: self, queue: self.work, options: [CBCentralManagerOptionShowPowerAlertKey: true]); let timer = DispatchSource.makeTimerSource(queue: self.work); timer.schedule(deadline: .now(), repeating: .milliseconds(2)); timer.setEventHandler { [weak self] in self?.tick() }; self.timer = timer; timer.resume() }
     }
-    func idle() -> Bool { writer == nil && !saving && batch == nil && movementRole == nil && !referencePending }
-    func configure(root: URL, queryHz: Int) { work.async { self.root = root; self.queryHz = (40...200).contains(queryHz) ? queryHz : 90; self.refreshStorage() } }
+    func idle() -> Bool { writer == nil && !saving && batch == nil && movementRole == nil && !referencePending && !magneticJob.phase.busy && headingToken == nil }
+    func configure(root: URL, queryHz: Int) { work.async { self.root = root; self.restoreMagTarget(); self.queryHz = (40...200).contains(queryHz) ? queryHz : 90; self.refreshStorage() } }
     func setQueryHz(_ hz: Int) { work.async { guard self.idle(), (40...200).contains(hz) else { return }; self.queryHz = hz; self.message = "查询上限已设为\(hz)次/秒/台，实际接收率另计" } }
     func scan() { work.async {
         guard self.idle(), self.central.state == .poweredOn else { self.message = "请先结束录制并开启蓝牙"; return }
@@ -88,7 +94,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         self.message = "连接选定设备，不自动开始记录"
     } }
     func disconnect() { work.async {
-        guard self.batch == nil && self.movementRole == nil && !self.referencePending else { self.message = "请先停止当前操作"; return }
+        guard !self.magneticJob.phase.busy && self.headingToken == nil && self.batch == nil && self.movementRole == nil && !self.referencePending else { self.message = "请先停止当前操作"; return }
         if self.writer != nil { self.finish(reason: "用户断开", at: Self.now()) }
         for d in self.links.values { d.wanted = false; self.central.cancelPeripheralConnection(d.peripheral); d.initialized = false; d.status = "正在断开" }
         self.central.stopScan(); self.scanning = false; self.scanGeneration = UUID()
@@ -103,7 +109,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         self.appActive = value
         if !value && self.writer != nil { self.fault = true; self.event(nil, "app_left_foreground"); self.finish(reason: "应用离开前台，后台采集尚未验收", at: Self.now()) }
         if !value { self.central?.stopScan(); self.scanning = false; self.scanGeneration = UUID() }
-        if !value { self.abortOperations("应用离开前台，停止后续操作；已提交指令的硬件状态须核验"); self.cancelWearing("佩戴检查因离开前台取消，请重新进行") }
+        if !value { self.interruptMag("应用离开前台"); self.headingToken = nil; self.abortOperations("应用离开前台，停止后续操作；已提交指令的硬件状态须核验"); self.cancelWearing("佩戴检查因离开前台取消，请重新进行") }
     } }
     func stop() { work.async { self.finish(reason:"手动结束",at:Self.now(),userEnded:true) } }
     func event(_ d: Link?, _ text: String) { writer?.event(id: d?.peripheral.identifier.uuidString ?? "", ns: Self.now(), message: text) }
@@ -160,7 +166,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
                 if d.peripheral.state == .disconnected && now >= d.retryAt && connecting < 2 {
                     if batch != nil && d.maintenance { continue }
                     if writer != nil { d.trialDiscarded += d.parser.discarded }
-                    d.generation = UUID(); d.readyAt = 0; d.goodSince = 0; d.quaternionWindow = QuaternionWindow()
+                    d.live = LiveMonitor(); d.generation = UUID(); d.readyAt = 0; d.goodSince = 0; d.quaternionWindow = QuaternionWindow()
                     d.status = "连接中"; d.stageAt = now; d.parser = WitParser(); d.recent = (0..<4).map { _ in RecentStream() }; d.pose = PoseWindow(); d.settings = [:]; d.registers = [:]; d.firmware = "未知"; d.writer = nil; d.notifier = nil; d.subscribed = false; d.initialized = false; d.reads = []; d.reading = nil; d.scheduler = QueryScheduler(); log(d,"请求连接，第\(d.retries+1)次"); self.central.connect(d.peripheral); connecting += 1
                 }
                 if !d.initialized && !(passive && d.connected) && d.peripheral.state != .disconnected && now > d.stageAt && now-d.stageAt > 15*secondNS { fail(d,"连接/初始化超时：\(d.status)") }
@@ -173,6 +179,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
                 }
             }
         }
+        serviceMag(now)
         if now-lastHealth >= 50_000_000 { serviceOperations(now); updateHealth(now); lastHealth = now }
         if movementEnd > 0 && now >= movementEnd { finishMovement() }
         if writer != nil {
@@ -186,6 +193,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     }
     func pump(_ d: Link, _ now: UInt64) -> Bool {
         guard !passive, d.wanted && d.connected && d.subscribed && !d.closing, let c = d.writer else { return false }
+        if magneticJob.target == d.peripheral.identifier && magneticJob.phase.writing { return false }
         if d.control != nil || !d.controls.isEmpty { return pumpControl(d,now) }
         if d.reading != nil {
             if now-d.readAt >= 2*secondNS {
@@ -209,6 +217,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         snapshot.timestamp = now; snapshot.freeBytes = freeBytes; snapshot.queuedWrites = writer?.status().queued ?? 0; snapshot.storedBytes = writer?.status().storedBytes ?? 0
         snapshot.batch = batch != nil; snapshot.movement = movementRole != nil || referencePending; snapshot.batchMessage = batch?.message ?? "批量操作已结束"; snapshot.queryHz = queryHz; snapshot.passive = passive
         snapshot.operationResults = operationResults; snapshot.recordingDiagnostic = recordingDiagnostic; snapshot.recordNumber = recordingAssignment?.record_number; snapshot.recordAttempt = recordingAssignment?.slot_attempt
+        snapshot.magPhase = magneticJob.phase; snapshot.magTarget = magneticJob.target?.uuidString; snapshot.magMessage = magneticJob.message; snapshot.headingPending = headingToken != nil
         snapshot.parallelCalibration = batch?.calibrate == true
         if let b = batch {
             snapshot.operationProgress = b.order.compactMap { id in
@@ -238,13 +247,14 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
                     } else { d.lowSince[k] = 0 }
                 }
             }
-            return DeviceSnapshot(id:d.peripheral.identifier.uuidString,name:d.name,status:d.status,wanted:d.wanted,connected:d.connected,initialized:d.initialized,ages:ages,hz:hz,acceleration:d.acceleration,gyro:d.gyro,magnetic:d.magnetic,quaternion:d.quaternion,configurationOK:d.registers[0x03] == 8 && d.registers[0x24] == 0 && d.registers[0x96] == 0,firmware:d.firmware,issues:issues,lastError:d.lastError,readiness:readiness(d,now),maintenance:d.maintenance,lastOperation:d.lastOperation,submittedQueries:d.submittedQueries,backpressureTicks:d.backpressureTicks,writeReadyCallbacks:d.writeReadyCallbacks)
+            return DeviceSnapshot(id:d.peripheral.identifier.uuidString,name:d.name,status:d.status,wanted:d.wanted,connected:d.connected,initialized:d.initialized,ages:ages,hz:hz,acceleration:d.acceleration,gyro:d.gyro,magnetic:d.magnetic,quaternion:d.quaternion,configurationOK:d.registers[0x03] == 8 && d.registers[0x24] == 0 && d.registers[0x96] == 0,firmware:d.firmware,issues:issues,lastError:d.lastError,readiness:readiness(d,now),maintenance:d.maintenance,lastOperation:d.lastOperation,live:d.live,canStartMag:magEligible(d,now),submittedQueries:d.submittedQueries,backpressureTicks:d.backpressureTicks,writeReadyCallbacks:d.writeReadyCallbacks)
         }
         DispatchQueue.main.async { self.onSnapshot?(snapshot) }
     }
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         log(nil,"蓝牙状态=\(central.state.rawValue)")
         if central.state != .poweredOn {
+            interruptMag("手机蓝牙不可用"); headingToken = nil; for d in links.values { d.live = LiveMonitor() }
             abortOperations("手机蓝牙不可用，操作停止"); cancelWearing("蓝牙不可用，佩戴检查取消")
             if writer != nil { fault = true; event(nil,"bluetooth_unavailable") }
             for d in links.values { failControls(d,"手机蓝牙不可用"); d.connected = false; d.initialized = false; d.subscribed = false; d.reading = nil; d.closing = false; d.goodSince = 0; d.disconnectedAt = Self.now(); d.status = "蓝牙不可用" }
@@ -267,6 +277,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     func disconnected(_ peripheral: CBPeripheral, _ error: Error?) {
         guard let d = links[peripheral.identifier], d.peripheral === peripheral else { return }
         if movementRole != nil, movementRoster.values.contains(where: { $0.peripheralID == peripheral.identifier.uuidString }) { cancelWearing("引导动作中部位断线，本次证据不足，请重新检查") }
+        if magneticJob.target == peripheral.identifier { interruptMag("设备断线") }; d.live = LiveMonitor()
         d.generation = UUID(); d.goodSince = 0; d.disconnectedAt = Self.now()
         failOperation(peripheral.identifier,"该设备断线，旧操作不能跨重连继续；其他设备继续")
         failControls(d,"连接已断开，旧操作不能跨重连继续")
@@ -322,6 +333,13 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
                 if d.reading == frame.register && ns >= d.readAt { log(d,String(format:"寄存器0x%02X回读=%d",frame.register,frame.words[0] & 65535)); d.reading = nil }
                 receivedControl(d,frame,ns)
                 if !d.initialized && d.reading == nil && d.reads.isEmpty && [0x2e,0x03,0x23,0x24,0x96].allSatisfy({d.registers[$0] != nil}) { d.initialized = true; d.readyAt = ns; d.disconnectedAt = 0; d.status = "四项接收中"; log(d,"初始化完成，开始四项接收") }
+            }
+            if frame.register == 0x72 { d.live.setType(frame.words[0] & 65535) }
+            if frame.register == 0x3a || frame.register == 0x51 {
+                let mag = frame.register == 0x3a
+                if mag { d.live.magnetic(ns,d.magnetic); observePostMag(d,ns) }
+                else { d.live.quaternion(ns,frame.quaternion) }
+                if let writer, targets.contains(peripheral.identifier) { writer.derived(d.live.row(id:peripheral.identifier.uuidString,ns:ns,magnetic:mag)) }
             }
             for i in indices { d.recent[i].add(ns); if writer != nil && actionNS > 0 && d.trialStreams.count == 4 { d.trialStreams[i].add(ns) } }
         }

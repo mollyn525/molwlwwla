@@ -1,6 +1,22 @@
 import XCTest
 
 final class WorkflowUITests: XCTestCase {
+    func testReadOnlyMonitorAndCalibrationPages() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages","(zh-Hans)","-AppleLocale","zh_CN"]
+        app.launch()
+        let monitor = app.buttons["liveMonitor"]
+        XCTAssertTrue(monitor.waitForExistence(timeout:15)); monitor.tap()
+        XCTAssertTrue(app.staticTexts["Magnetic Field (a.u.)"].waitForExistence(timeout:5))
+        app.buttons["Orientation"].tap()
+        XCTAssertFalse(app.buttons["Heading reset · 本台归零"].isEnabled)
+        app.tabBars.buttons["设置"].tap()
+        app.buttons["singleMagCalibration"].tap()
+        XCTAssertTrue(app.navigationBars["单台磁场校准"].waitForExistence(timeout:5))
+        XCTAssertFalse(app.buttons["开始单台磁场校准"].isEnabled)
+        XCTAssertFalse(app.buttons["结束并保存"].isEnabled)
+        attach(app,"单台磁场校准离线预览")
+    }
     func testFiveTabsTaskPersistenceAndFormalGate() {
         continueAfterFailure = false
         let app = XCUIApplication()

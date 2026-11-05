@@ -70,10 +70,12 @@ public enum ArchiveExporter {
             if let a = trial.assignment, !trial.diagnostic { prefix = String(format: "study_%@/action_%02d/slot_%03d/attempt_%03d/%@", a.study_id, a.action+1, a.record_number, a.slot_attempt, trial.id) }
             else { prefix = "diagnostic/\(trial.id)" }
             var missing: [String] = []
-            for name in required + ["action-review.json"] {
+            let meta = try? JSONFile.read(folder.appendingPathComponent("metadata.json"))
+            let expected = required + (meta?["live_monitor"] != nil ? [PoseMonitor.file] : [])
+            for name in expected + ["action-review.json"] {
                 let file = folder.appendingPathComponent(name)
                 if FileManager.default.fileExists(atPath: file.path) { manifest.append(try zip.add(name: prefix+"/"+name, file: file)) }
-                else if required.contains(name) { missing.append(name) }
+                else if expected.contains(name) { missing.append(name) }
             }
             let complete = missing.isEmpty; if !complete { issues += 1 }
             if complete {
