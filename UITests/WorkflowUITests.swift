@@ -9,12 +9,16 @@ final class WorkflowUITests: XCTestCase {
         XCTAssertTrue(monitor.waitForExistence(timeout:15)); monitor.tap()
         XCTAssertTrue(app.staticTexts["Magnetic Field (a.u.)"].waitForExistence(timeout:5))
         app.buttons["Orientation"].tap()
-        XCTAssertFalse(app.buttons["Heading reset · 本台归零"].isEnabled)
+        let reset = app.buttons["Heading reset · 本台归零"]
+        for _ in 0..<5 { if reset.exists { break }; app.swipeUp() }
+        XCTAssertTrue(reset.exists); XCTAssertFalse(reset.isEnabled)
         app.tabBars.buttons["设置"].tap()
         app.buttons["singleMagCalibration"].tap()
         XCTAssertTrue(app.navigationBars["单台磁场校准"].waitForExistence(timeout:5))
-        XCTAssertFalse(app.buttons["开始单台磁场校准"].isEnabled)
-        XCTAssertFalse(app.buttons["结束并保存"].isEnabled)
+        let start = app.buttons["开始单台磁场校准"], finish = app.buttons["结束并保存"]
+        for _ in 0..<5 { if start.exists && finish.exists { break }; app.swipeUp() }
+        XCTAssertTrue(start.exists); XCTAssertFalse(start.isEnabled)
+        XCTAssertTrue(finish.exists); XCTAssertFalse(finish.isEnabled)
         attach(app,"单台磁场校准离线预览")
     }
     func testFiveTabsTaskPersistenceAndFormalGate() {
