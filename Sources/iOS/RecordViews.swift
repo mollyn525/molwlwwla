@@ -10,8 +10,8 @@ struct RecordsView: View {
     private var rows: [Trial] {
         model.trials.filter { trial in
             let d = model.details[trial.id]
-            let taskOK = !currentTask || (trial.assignment?.study_id == model.study?.id && !trial.diagnostic)
-            let actionOK = action == -1 || trial.assignment?.action == action
+            let taskOK = !currentTask || (trial.studyID == model.study?.id && !trial.diagnostic)
+            let actionOK = action == -1 || (action == -2 && trial.calibration != nil) || trial.assignment?.action == action
             let qualityOK = quality == 0 || quality == 1 && !trial.qualityPassed || quality == 2 && !trial.diagnostic && !trial.accepted || quality == 3 && trial.accepted
             let searchOK = search.isEmpty || (d?.subject ?? "").localizedCaseInsensitiveContains(search) || (d?.actionName ?? "").localizedCaseInsensitiveContains(search) || trial.id.localizedCaseInsensitiveContains(search)
             return taskOK && actionOK && qualityOK && searchOK
@@ -22,9 +22,9 @@ struct RecordsView: View {
             StatusBanner()
             Section("筛选与导出") {
                 Toggle("仅当前任务",isOn:$currentTask)
-                Picker("动作",selection:$action) { Text("全部动作 / 诊断").tag(-1); ForEach(0..<8,id:\.self) { i in Text(model.study?.actions[i] ?? "动作\(i+1)").tag(i) } }
+                Picker("动作",selection:$action) { Text("全部记录").tag(-1); Text("静态 / 动态校正").tag(-2); ForEach(0..<8,id:\.self) { i in Text(model.study?.actions[i] ?? "动作\(i+1)").tag(i) } }
                 Picker("结果",selection:$quality) { Text("全部").tag(0); Text("质量未通过").tag(1); Text("待补录").tag(2); Text("已合格").tag(3) }
-                Button("导出当前任务全部尝试") { model.export(model.trials.filter { $0.assignment?.study_id == model.study?.id && !$0.diagnostic }) }.disabled(model.busy || model.study == nil)
+                Button("导出当前任务全部尝试") { model.export(model.trials.filter { $0.studyID == model.study?.id && !$0.diagnostic }) }.disabled(model.busy || model.study == nil)
                 Button("导出筛选后的\(rows.count)条记录") { model.export(rows) }.disabled(model.busy || rows.isEmpty)
                 Button("刷新记录") { model.reload() }.disabled(model.busy)
             }
@@ -32,9 +32,9 @@ struct RecordsView: View {
             ForEach(rows) { trial in
                 NavigationLink { RecordView(trial:trial) } label: {
                     VStack(alignment:.leading,spacing:4) {
-                        Text(trial.diagnostic ? "诊断记录":String(format:"编号%03d · 尝试%d",trial.assignment?.record_number ?? 0,trial.assignment?.slot_attempt ?? 0)).font(.headline)
+                        Text(trial.calibration?.kind.title ?? (trial.diagnostic ? "诊断记录":String(format:"编号%03d · 尝试%d",trial.assignment?.record_number ?? 0,trial.assignment?.slot_attempt ?? 0))).font(.headline)
                         Text((model.details[trial.id]?.subject ?? "")+" · "+(model.details[trial.id]?.actionName ?? "")).font(.caption)
-                        Text(trial.accepted ? "已合格":trial.diagnostic ? (trial.qualityPassed ? "诊断质量通过，不计正式编号":"诊断质量未通过"):"待补录").foregroundStyle(trial.qualityPassed ? .secondary:Color.orange)
+                        Text(trial.calibration != nil ? (trial.status == "calibration_complete" && trial.qualityPassed ? "校正采集完成" : "待重采") : trial.accepted ? "已合格":trial.diagnostic ? (trial.qualityPassed ? "诊断质量通过，不计正式编号":"诊断质量未通过"):"待补录").foregroundStyle(trial.qualityPassed ? .secondary:Color.orange)
                         Text(trial.id).font(.caption2).foregroundStyle(.secondary)
                     }
                 }
@@ -60,11 +60,11 @@ struct RecordView: View {
                 Text(current.qualityPassed ? "数据质量通过":"数据质量未通过").foregroundStyle(current.qualityPassed ? .teal:.orange)
                 Text(detail?.policy?.title ?? "质量标准未知，以原始摘要为准").font(.footnote)
                 if detail?.policy == .legacy { Text("保留记录时的质量结果，本次更新不重算历史合格次数。").font(.caption).foregroundStyle(.secondary) }
-                Text(current.diagnostic ? "诊断独立保存，不占正式编号":current.accepted ? "默认正常，计入合格次数":"待补录，原始记录保留")
+                Text(current.calibration != nil ? (current.status == "calibration_complete" && current.qualityPassed ? "校正采集完成" : "校正采集未完成，可重新采集") : current.diagnostic ? "诊断独立保存，不占正式编号":current.accepted ? "默认正常，计入合格次数":"待补录，原始记录保留")
                 ForEach(detail?.failureReasons ?? [],id:\.self) { Text($0).font(.footnote).foregroundStyle(.orange) }
                 Button("导出本次") { model.export([current]) }.disabled(model.busy)
             }
-            if !current.diagnostic {
+            if !current.diagnostic && current.calibration == nil {
                 Section("动作与补录") {
                     Button("这条有问题，标记补录",role:.destructive) { retry = true }.disabled(model.busy)
                     if !current.accepted, let a = current.assignment, a.study_id == model.study?.id { NavigationLink("去补录编号\(String(format:"%03d",a.record_number))") { ActionView(action:a.action,initialSlot:a.slot) } }

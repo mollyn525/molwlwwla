@@ -14,6 +14,13 @@ for path in paths:
         checklist=json.loads(z.read('export-checklist.json'));assert checklist['complete']
         rows=json.loads(z.read('collection-index.json'))['records'];assert rows
         if path.name=='diagnostic-export.zip':assert not any(r['counted_for_slot'] for r in rows)
+        if path.name=='subject-calibration-export.zip':
+            assert len(rows)==1 and not rows[0]['counted_for_slot'] and not rows[0]['diagnostic']
+            record=rows[0]; calibration=record['subject_calibration']
+            assert calibration['kind']=='static_n_pose'
+            assert record['archive_path'].startswith('study_'+calibration['studyID']+'/calibration/static_n_pose/')
+            assert json.loads(z.read(record['archive_path']+'/metadata.json'))['subject_calibration']==calibration
+            assert json.loads(z.read(record['archive_path']+'/summary.json'))['status']=='calibration_complete'
         if path.name=='formal-retry-export.zip':
             assert len(rows)==3 and sum(r['counted_for_slot'] for r in rows)==1
             assert {r['assignment']['slot_attempt'] for r in rows}=={1,2,3}

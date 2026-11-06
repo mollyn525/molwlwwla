@@ -63,6 +63,21 @@ final class CoreTests: XCTestCase {
         rows.append(Trial(id:"retry-3",assignment:final,diagnostic:false,quality:true,normal:true,status:"accepted_default"))
         XCTAssertEqual(SlotBook(studyID:study,trials:rows).total,120);XCTAssertEqual(rows.count,122)
     }
+    func testActionsCanBeCollectedInAnyOrder() throws {
+        var rows: [Trial] = []
+        for action in [7,2,0,5,1,6,4,3] {
+            let book = SlotBook(studyID:"free-order",trials:rows)
+            let assignment = try book.begin(action:action,slot:15)
+            XCTAssertEqual(assignment.record_number,action*15+15)
+            rows.append(Trial(id:"record-\(action)",assignment:assignment,diagnostic:false,quality:true,normal:true,status:"accepted_default"))
+        }
+        let book = SlotBook(studyID:"free-order",trials:rows)
+        XCTAssertEqual(book.total,8)
+        XCTAssertThrowsError(try book.begin(action:7,slot:15))
+        XCTAssertNoThrow(try book.begin(action:7,slot:1))
+        XCTAssertThrowsError(try book.begin(action:-1,slot:1))
+        XCTAssertThrowsError(try book.begin(action:1,slot:16))
+    }
     func testCorruptAssignmentsAndDuplicateAttemptsFailClosed() throws {
         let bytes = Data("{\"study_id\":\"s\",\"action\":0,\"slot\":1,\"slot_attempt\":1,\"record_number\":99}".utf8)
         XCTAssertThrowsError(try JSONDecoder().decode(Assignment.self,from:bytes))

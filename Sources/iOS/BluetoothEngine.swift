@@ -7,6 +7,7 @@ struct DeviceSnapshot: Identifiable {
     var ages: [Double?], hz: [Double], acceleration: [Double], gyro: [Double], magnetic: [Double], quaternion: [Double]
     var configurationOK: Bool, firmware: String, issues: [String], lastError: String
     var readiness: DeviceReadiness, maintenance: Bool, lastOperation: String
+    var installationOrientation: Int?
     var live = LiveMonitor(), canStartMag = false
     var submittedQueries: Int, backpressureTicks: Int, writeReadyCallbacks: Int
 }
@@ -17,6 +18,7 @@ struct EngineSnapshot {
     var connectionLog: [String] = []
     var timestamp: UInt64 = 0, freeBytes: Int64 = -1, queuedWrites = 0, storedBytes: UInt64 = 0
     var batch = false, movement = false, batchMessage = "未执行批量操作", queryHz = 90, passive = false
+    var recordingCalibration: SubjectCalibrationKind?
     var recordingDiagnostic = true, recordNumber: Int?, recordAttempt: Int?
     var operationResults: [String] = []
     var magTarget: String?, magPhase = MagPhase.idle, magMessage = "", headingPending = false
@@ -63,6 +65,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     var onReferences: (([String:SensorBinding],String,Bool) -> Void)?, onMovement: ((MovementReport,String,String) -> Void)?
     var onOperationFinished: (() -> Void)?, onRequestFinished: (() -> Void)?
     var onOperationResult: (([String:Any]) -> Void)?
+    var recordingCalibration: SubjectCalibration?
     var recordingDiagnostic = true, recordingAssignment: Assignment?, recordingRoster: [String:SensorBinding] = [:], overMinute = false
     var onSnapshot: ((EngineSnapshot) -> Void)?, onSaved: (() -> Void)?
     static func now() -> UInt64 { DispatchTime.now().uptimeNanoseconds }
@@ -111,7 +114,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         if !value { self.central?.stopScan(); self.scanning = false; self.scanGeneration = UUID() }
         if !value { self.interruptMag("应用离开前台"); self.headingToken = nil; self.abortOperations("应用离开前台，停止后续操作；已提交指令的硬件状态须核验"); self.cancelWearing("佩戴检查因离开前台取消，请重新进行") }
     } }
-    func stop() { work.async { self.finish(reason:"手动结束",at:Self.now(),userEnded:true) } }
+    func stop(calibrationComplete: Bool = false) { work.async { self.finish(reason:"手动结束",at:Self.now(),userEnded:true,calibrationComplete:calibrationComplete) } }
     func event(_ d: Link?, _ text: String) { writer?.event(id: d?.peripheral.identifier.uuidString ?? "", ns: Self.now(), message: text) }
     func log(_ d: Link?, _ text: String) {
         let device = d.map { "\($0.name) [\($0.peripheral.identifier.uuidString)]" } ?? "App"
@@ -130,7 +133,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         failOperation(d.peripheral.identifier,reason+"；仅结束该设备操作")
         log(d,reason); central.cancelPeripheralConnection(d.peripheral)
     }
-    func finish(reason: String, at: UInt64, userEnded: Bool = false) {
+    func finish(reason: String, at: UInt64, userEnded: Bool = false, calibrationComplete: Bool = false) {
         guard let recorder = writer else { return }; event(nil, "record_end reason=\(reason)")
         var devices: [[String: Any]] = []; var quality = actionNS > 0 && !fault && (recordingDiagnostic || Set(targets).count == 15)
         for id in targets {
@@ -144,11 +147,21 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
             devices.append(["address":id.uuidString,"role":role,"streams":results.compactMap { try? JSONFile.object($0) },"invalid_quaternions":d.invalidQ,"parser_discarded_bytes":discarded,"tail_bytes":d.parser.pendingBytes,"query_submissions":d.submittedQueries,"backpressure_ticks":d.backpressureTicks,"write_ready_callbacks":d.writeReadyCallbacks])
         }
         let outcome = RecordingPolicy.summary(diagnostic:recordingDiagnostic,actionStarted:actionNS>0,userEnded:userEnded,quality:quality)
-        let summary: [String: Any] = ["quality_policy":QualityPolicy.current.metadata,"action_start_ns":actionNS,"end_ns":at,"duration_s":actionNS > 0 ? Double(at-actionNS)/1e9 : 0,"reason":reason,"diagnostic":recordingDiagnostic,"fault_event":fault,"quality_passed":quality,"accepted":outcome.accepted,"normal_completion":outcome.normal,"status":outcome.status,"devices":devices]
+        var summary: [String: Any] = ["quality_policy":QualityPolicy.current.metadata,"action_start_ns":actionNS,"end_ns":at,"duration_s":actionNS > 0 ? Double(at-actionNS)/1e9 : 0,"reason":reason,"diagnostic":recordingDiagnostic,"fault_event":fault,"quality_passed":quality,"accepted":outcome.accepted,"normal_completion":outcome.normal,"status":outcome.status,"devices":devices]
+        if let calibration = recordingCalibration {
+            let duration = actionNS > 0 && at >= actionNS ? Double(at-actionNS)/1e9 : 0
+            let complete = RecordingPolicy.calibrationCompleted(kind:calibration.kind,duration:duration,completionConfirmed:calibrationComplete)
+            summary["normal_completion"] = complete
+            summary["accepted"] = false
+            summary["status"] = quality && complete ? "calibration_complete" : "calibration_incomplete"
+            summary["subject_calibration"] = try? JSONFile.object(calibration)
+            summary["operator_confirmed_two_squats"] = calibration.kind == .dynamicSquats && calibrationComplete
+        }
+        let wasCalibration = recordingCalibration != nil
         writer = nil; saving = true; message = "正在保存…"
         recorder.close(summary: summary) { result in self.work.async {
             self.saving = false
-            switch result { case .success(let final): self.message = self.recordingDiagnostic ? "诊断已保存，不占正式编号" : (final["accepted"] as? Bool == true ? "已保存并默认正常；有问题可标记补录":"记录已保留，待补录；请查看失败原因"); case .failure(let e): self.message = "保存失败：\(e.localizedDescription)，原文件保留" }
+            switch result { case .success(let final): self.message = wasCalibration ? (final["status"] as? String == "calibration_complete" ? "校正数据已保存，采集完成" : "本次校正采集未完成，请查看原因后重采") : self.recordingDiagnostic ? "诊断已保存，不占正式编号" : (final["accepted"] as? Bool == true ? "已保存并默认正常；有问题可标记补录":"记录已保留，待补录；请查看失败原因"); case .failure(let e): self.message = "保存失败：\(e.localizedDescription)，原文件保留" }
             DispatchQueue.main.async { self.onSaved?() }
         } }
     }
@@ -184,7 +197,10 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         if movementEnd > 0 && now >= movementEnd { finishMovement() }
         if writer != nil {
             if actionNS == 0 && now-startNS >= 3*secondNS { actionNS = now; for id in targets { links[id]?.trialStreams = (0..<4).map { _ in TrialStream(start: now) } }; event(nil,"action_start") }
-            if actionNS > 0 && now-actionNS >= 60*secondNS && !overMinute { overMinute = true; message = "动作已超过60秒，请完成后手动结束"; event(nil,"over_60_seconds_reminder") }
+            if recordingCalibration?.kind == .staticPose && actionNS > 0 && now-actionNS >= 5*secondNS {
+                finish(reason:"N-pose 5秒采集完成",at:now,calibrationComplete:true)
+            }
+            if writer != nil && actionNS > 0 && now-actionNS >= 60*secondNS && !overMinute { overMinute = true; message = "动作已超过60秒，请完成后手动结束"; event(nil,"over_60_seconds_reminder") }
             if now-lastFlush >= secondNS { writer?.flush(); lastFlush = now }
             if let state = writer?.status(), !state.error.isEmpty { fault = true; finish(reason: state.error, at: now) }
             else if endNS > 0 && now >= endNS { finish(reason: "诊断到时", at: now) }
@@ -216,7 +232,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         var snapshot = EngineSnapshot(); snapshot.enabled = central?.state == .poweredOn; snapshot.scanning = scanning; snapshot.recording = writer != nil; snapshot.saving = saving
         snapshot.timestamp = now; snapshot.freeBytes = freeBytes; snapshot.queuedWrites = writer?.status().queued ?? 0; snapshot.storedBytes = writer?.status().storedBytes ?? 0
         snapshot.batch = batch != nil; snapshot.movement = movementRole != nil || referencePending; snapshot.batchMessage = batch?.message ?? "批量操作已结束"; snapshot.queryHz = queryHz; snapshot.passive = passive
-        snapshot.operationResults = operationResults; snapshot.recordingDiagnostic = recordingDiagnostic; snapshot.recordNumber = recordingAssignment?.record_number; snapshot.recordAttempt = recordingAssignment?.slot_attempt
+        snapshot.operationResults = operationResults; snapshot.recordingCalibration = recordingCalibration?.kind; snapshot.recordingDiagnostic = recordingDiagnostic; snapshot.recordNumber = recordingAssignment?.record_number; snapshot.recordAttempt = recordingAssignment?.slot_attempt
         snapshot.magPhase = magneticJob.phase; snapshot.magTarget = magneticJob.target?.uuidString; snapshot.magMessage = magneticJob.message; snapshot.headingPending = headingToken != nil
         snapshot.parallelCalibration = batch?.calibrate == true
         if let b = batch {
@@ -247,7 +263,7 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
                     } else { d.lowSince[k] = 0 }
                 }
             }
-            return DeviceSnapshot(id:d.peripheral.identifier.uuidString,name:d.name,status:d.status,wanted:d.wanted,connected:d.connected,initialized:d.initialized,ages:ages,hz:hz,acceleration:d.acceleration,gyro:d.gyro,magnetic:d.magnetic,quaternion:d.quaternion,configurationOK:d.registers[0x03] == 8 && d.registers[0x24] == 0 && d.registers[0x96] == 0,firmware:d.firmware,issues:issues,lastError:d.lastError,readiness:readiness(d,now),maintenance:d.maintenance,lastOperation:d.lastOperation,live:d.live,canStartMag:magEligible(d,now),submittedQueries:d.submittedQueries,backpressureTicks:d.backpressureTicks,writeReadyCallbacks:d.writeReadyCallbacks)
+            return DeviceSnapshot(id:d.peripheral.identifier.uuidString,name:d.name,status:d.status,wanted:d.wanted,connected:d.connected,initialized:d.initialized,ages:ages,hz:hz,acceleration:d.acceleration,gyro:d.gyro,magnetic:d.magnetic,quaternion:d.quaternion,configurationOK:d.registers[0x03] == 8 && d.registers[0x24] == 0 && d.registers[0x96] == 0,firmware:d.firmware,issues:issues,lastError:d.lastError,readiness:readiness(d,now),maintenance:d.maintenance,lastOperation:d.lastOperation,installationOrientation:d.registers[0x23],live:d.live,canStartMag:magEligible(d,now),submittedQueries:d.submittedQueries,backpressureTicks:d.backpressureTicks,writeReadyCallbacks:d.writeReadyCallbacks)
         }
         DispatchQueue.main.async { self.onSnapshot?(snapshot) }
     }

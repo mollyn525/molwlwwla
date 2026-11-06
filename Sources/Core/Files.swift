@@ -46,6 +46,7 @@ public final class StudyFiles {
         guard BodyRole.all.contains(where: { $0.id == role }), UUID(uuidString: id) != nil else { throw LabError.invalid("部位或iOS设备UUID无效") }
         guard !roster.contains(where: { $0.key != role && $0.value.peripheralID == id }) else { throw LabError.invalid("设备已绑定其他部位") }
         var next = roster; next[role] = SensorBinding(peripheralID: id, name: name); try saveRoster(next)
+        try invalidateSubjectCalibration()
     }
     private func saveRoster(_ next: [String: SensorBinding]) throws { try JSONFile.encode(next, to: root.appendingPathComponent("roster.json")); roster = next }
     private func resetWear() throws {
@@ -53,7 +54,19 @@ public final class StudyFiles {
         for key in next.keys { next[key]?.wearConfirmed = false; next[key]?.reference = nil; next[key]?.referenceID = nil; next[key]?.referenceStudyID = nil; next[key]?.referenceDiagnostic = nil; next[key]?.movement = nil; next[key]?.gravity = nil; next[key]?.wearNote = nil; next[key]?.wearConfirmedMS = nil; next[key]?.wearPendingMS = Int64(Date().timeIntervalSince1970*1000) }
         try saveRoster(next)
     }
+    public func setMountingLabel(_ value: MountingLabel) throws {
+        guard var next = study else { throw LabError.invalid("请先新建或继续受试者任务") }
+        next.mountingLabel = value
+        try commit(next)
+        try audit("mounting_label",["value":value.rawValue,"hardware_commands":false])
+    }
+    public func invalidateSubjectCalibration() throws {
+        guard var next = study else { return }
+        next.calibrationRevision = UUID().uuidString
+        try commit(next)
+    }
     public func invalidateWear(peripheralID: String) throws {
+        try invalidateSubjectCalibration()
         guard let entry = roster.first(where: { $0.value.peripheralID == peripheralID }) else { return }
         var next = roster
         next[entry.key] = SensorBinding(peripheralID: peripheralID, name: entry.value.name)
@@ -99,19 +112,24 @@ public final class StudyFiles {
                 let summary = try JSONFile.read(summaryURL)
                 let assignment = try (meta["assignment"] as? [String: Any]).map { try JSONDecoder().decode(Assignment.self, from: JSONFile.bytes($0)) }
                 var trial = Trial(id: dir.lastPathComponent, assignment: assignment, diagnostic: meta["diagnostic"] as? Bool ?? true, quality: summary["quality_passed"] as? Bool ?? false, normal: summary["normal_completion"] as? Bool ?? false, status: summary["status"] as? String ?? "unknown")
+                trial.calibration = try (meta["subject_calibration"] as? [String:Any]).map { try JSONDecoder().decode(SubjectCalibration.self,from:JSONFile.bytes($0)) }
+                if let calibration = trial.calibration {
+                    guard trial.assignment == nil, !trial.diagnostic, calibration.studyID == meta["study_id"] as? String else { throw LabError.invalid("校正记录归属不一致") }
+                }
                 if (summary["fault_event"] as? Bool ?? false) || (summary["dropped_log_records"] as? Int ?? 0) > 0 || !(summary["storage_error"] as? String ?? "").isEmpty || trial.status == "incomplete_process_exit" { trial.qualityPassed = false }
                 let review = dir.appendingPathComponent("action-review.json")
                 if fm.fileExists(atPath: review.path) { trial.reviews = try JSONFile.decode([Review].self, from: review) }
                 if !trial.reviewValid { trial.qualityPassed = false; warnings.append("\(trial.id)：复核历史损坏") }
                 if trial.qualityPassed {
-                    let missing = ArchiveExporter.required.filter { !fm.fileExists(atPath:dir.appendingPathComponent($0).path) }
+                    let expected = ArchiveExporter.required + (meta["live_monitor"] != nil ? [PoseMonitor.file] : [])
+                    let missing = expected.filter { !fm.fileExists(atPath:dir.appendingPathComponent($0).path) }
                     if !missing.isEmpty { trial.qualityPassed = false; warnings.append("\(trial.id)：记录缺少必要文件："+missing.joined(separator:"、")) }
                 }
                 trials.append(trial)
             } catch { warnings.append("\(dir.lastPathComponent)：\(error.localizedDescription)") }
         }
         var assignments = Set<String>()
-        for trial in trials where !trial.diagnostic {
+        for trial in trials where !trial.diagnostic && trial.calibration == nil {
             guard let a = trial.assignment else { warnings.append("\(trial.id)：正式记录缺少固定编号"); continue }
             let key = "\(a.study_id)/\(a.record_number)/\(a.slot_attempt)"
             if !assignments.insert(key).inserted { warnings.append("\(trial.id)：固定编号的尝试号重复") }

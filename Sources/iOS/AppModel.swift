@@ -33,6 +33,10 @@ import BaduanjinCore
         engine.onSnapshot = { [weak self] state in
             guard let self else { return }; self.engineState = state
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--recording-dock-ui-fixture") {
+                self.engineState.recording = true; self.engineState.saving = false
+                self.engineState.recordingCalibration = .dynamicSquats; self.engineState.countdown = 0; self.engineState.elapsed = 2
+            }
             if ProcessInfo.processInfo.arguments.contains("--parallel-calibration-ui-fixture") {
                 self.engineState.batch = true; self.engineState.parallelCalibration = true
                 self.engineState.batchMessage = "并行校准：2/15台结束 · 通过1台；请保持全组不动"
@@ -49,7 +53,7 @@ import BaduanjinCore
         }
         engine.onMagPrepare = { [weak self] id, done in
             guard let self, let files = self.files else { done("无法读取名册"); return }
-            do { try files.invalidateWear(peripheralID:id); self.roster = files.roster; done(nil) }
+            do { try files.invalidateWear(peripheralID:id); self.roster = files.roster; self.study = files.study; done(nil) }
             catch { done(error.localizedDescription) }
         }
         engine.onSaved = { [weak self] in self?.reload() }
@@ -68,6 +72,9 @@ import BaduanjinCore
             do { try files.saveMovement(report,peripheralID:id,referenceID:reference); self.reload() } catch { self.error = error.localizedDescription }
         }
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--recording-dock-ui-fixture") {
+            study = try? Study(subject:"UI_FIXTURE",at:1)
+        }
         // Simulator UI fixture only; in-memory, no hardware writes or persistent history changes.
         if ProcessInfo.processInfo.arguments.contains("--calibration-ui-fixture") {
             let details: [String:Any] = ["operation_id":"UI_CALIBRATION","name":"模拟设备","type":"accelerometer_calibration","save_submitted":true,"static_check_passed":true,"final_window_passed":true,"result":"静态复核通过（模拟界面测试）","fresh_before":["static_mean_g":[0.01,0.02,0.99]],"after":["static_mean_g":[0.0,0.0,1.0]],"recovering_before_save_entered":true]
@@ -102,13 +109,29 @@ import BaduanjinCore
     func rename(_ names: [String]) { perform { try $0.rename(names,at:BluetoothEngine.wall()) } }
     func bind(role: String, id: String, name: String) { perform { try $0.bind(role:role,id:id,name:name); engine.clearLiveReferences() } }
     func retry(_ trial: Trial, reason: String) { perform { try $0.markRetry(id:trial.id,reason:reason,revision:trial.reviews.count,at:BluetoothEngine.wall()) } }
+    func setMountingLabel(_ value: MountingLabel) { perform { try $0.setMountingLabel(value) } }
+    var calibrationSetup: String? {
+        guard let study else { return nil }
+        let directions = Dictionary(uniqueKeysWithValues:engineState.devices.filter(\.wanted).map { ($0.id,$0.installationOrientation ?? -1) })
+        return try? SubjectCalibration.setup(study:study,roster:roster,orientations:directions)
+    }
+    func calibrationCompleted(_ kind: SubjectCalibrationKind) -> Bool {
+        guard let study, let setup = calibrationSetup else { return false }
+        return SubjectCalibration.completed(kind,studyID:study.id,setup:setup,trials:trials)
+    }
+    func startCalibration(_ kind: SubjectCalibrationKind) {
+        guard !busy, let files, let study else { return }
+        guard calibrationPreflight.ready else { error = calibrationPreflight.blockers.map { $0.title+"，"+$0.detail }.joined(separator:"\n"); return }
+        pending = true
+        engine.startSubjectCalibration(root:files.sessions,roster:roster,study:study,kind:kind,classificationOK:files.warnings.isEmpty)
+    }
     func diagnostic(seconds: Int) { guard !busy, let files else { return }; pending = true; engine.startDiagnostic(root:files.sessions,roster:roster,study:study,seconds:seconds) }
     func start(action: Int, slot: Int) {
         guard !busy, let files, let study else { return }
         do {
             guard preflight.ready else { throw LabError.invalid(preflight.blockers.map { $0.title+"："+$0.detail }.joined(separator:"\n")) }
             let assignment = try book.begin(action:action,slot:slot); pending = true
-            engine.startFormal(root:files.sessions,roster:roster,study:study,assignment:assignment,classificationOK:files.warnings.isEmpty)
+            engine.startFormal(root:files.sessions,roster:roster,study:study,assignment:assignment,classificationOK:files.warnings.isEmpty,calibrationTrials:trials)
         } catch { self.error = error.localizedDescription }
     }
     func captureReference(diagnostic: Bool) { guard !busy, let study else { error = "请先新建或继续受试者任务"; return }; pending = true; engine.captureReference(roster:roster,studyID:study.id,diagnostic:diagnostic) }
@@ -122,7 +145,13 @@ import BaduanjinCore
     }
     func invalidateWear() { perform { try $0.invalidateWear() } }
     func review(_ trial: Trial, accepted: Bool, reason: String) { perform { try $0.review(id:trial.id,decision:accepted ? "accepted":"rejected",reason:reason,revision:trial.reviews.count,at:BluetoothEngine.wall()) } }
-    func batch(calibrate: Bool, rewrite: Bool = false, placementConfirmed: Bool = false) { guard !busy else { return }; pending = true; engine.beginBatch(calibrate:calibrate,rewrite:rewrite,placementConfirmed:placementConfirmed) }
+    func batch(calibrate: Bool, rewrite: Bool = false, placementConfirmed: Bool = false) {
+        guard !busy, let files else { return }
+        do {
+            try files.invalidateSubjectCalibration(); study = files.study
+            pending = true; engine.beginBatch(calibrate:calibrate,rewrite:rewrite,placementConfirmed:placementConfirmed)
+        } catch { error = error.localizedDescription }
+    }
     func setQueryHz() { guard !busy, (40...200).contains(queryHz) else { return }; UserDefaults.standard.set(queryHz,forKey:"queryHz"); engine.setQueryHz(queryHz) }
     func export(_ rows: [Trial]) {
         guard !busy, let files else { return }; exporting = true; exportProgress = "准备导出…"
@@ -164,9 +193,17 @@ import BaduanjinCore
         return d.name+" · "+String(d.id.suffix(6))
     }
     func device(_ role: BodyRole) -> DeviceSnapshot? { guard let id = roster[role.id]?.peripheralID else { return nil }; return engineState.devices.first { $0.id == id } }
-    var preflight: PreflightResult {
+    private func checkAcquisition(nextAction: Int?) -> PreflightResult {
         let now = BluetoothEngine.now(), stamp = engineState.timestamp
-        return Preflight.evaluate(study:study?.id,nextAction:book.nextAction,roster:roster,devices:engineState.devices.map(\.readiness),idle:!busy && engineState.magPhase != .uncertain,bluetooth:engineState.enabled,freeBytes:engineState.freeBytes,fresh:stamp > 0 && now >= stamp && now-stamp < secondNS,normalMode:!engineState.passive,classificationOK:files?.warnings.isEmpty == true)
+        return Preflight.evaluate(study:study?.id,nextAction:nextAction,roster:roster,devices:engineState.devices.map(\.readiness),idle:!busy && engineState.magPhase != .uncertain,bluetooth:engineState.enabled,freeBytes:engineState.freeBytes,fresh:stamp > 0 && now >= stamp && now-stamp < secondNS,normalMode:!engineState.passive,classificationOK:files?.warnings.isEmpty == true)
+    }
+    var calibrationPreflight: PreflightResult { checkAcquisition(nextAction:0) }
+    var preflight: PreflightResult {
+        var result = checkAcquisition(nextAction:book.nextAction)
+        for kind in SubjectCalibrationKind.allCases {
+            result.checks.append(CheckItem(id:"subject_calibration_"+kind.rawValue,role:"",title:kind.title,passed:calibrationCompleted(kind),detail:kind == .staticPose ? "完成当前受试者的 N-pose 5秒采集" : "完成当前受试者的两个深蹲采集"))
+        }
+        return result
     }
     var checklist: [String] { preflight.checks.map { ($0.passed ? "✓ ":"待处理 · ")+$0.title+"："+$0.detail } }
     func exportOperations() {

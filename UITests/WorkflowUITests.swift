@@ -1,6 +1,27 @@
 import XCTest
 
 final class WorkflowUITests: XCTestCase {
+    func testSubjectCalibrationAndPinnedRecordingControls() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages","(zh-Hans)","-AppleLocale","zh_CN","--recording-dock-ui-fixture"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["采集"].waitForExistence(timeout:15))
+        app.tabBars.buttons["采集"].tap()
+        let stop = app.buttons["recordingStop"]
+        XCTAssertTrue(stop.waitForExistence(timeout:5)); XCTAssertTrue(stop.isHittable)
+        let y = stop.frame.midY
+        app.swipeUp()
+        XCTAssertTrue(stop.isHittable); XCTAssertEqual(stop.frame.midY,y,accuracy:3)
+        app.swipeDown()
+        let preparation = app.buttons["受试者静态 / 动态校正"]
+        XCTAssertTrue(preparation.exists); preparation.tap()
+        XCTAssertTrue(app.navigationBars["受试者校正采集"].waitForExistence(timeout:5))
+        XCTAssertTrue(stop.isHittable)
+        app.swipeUp(); XCTAssertTrue(stop.isHittable)
+        attach(app,"校正采集与固定结束按钮")
+        app.terminate()
+    }
     func testReadOnlyMonitorAndCalibrationPages() {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages","(zh-Hans)","-AppleLocale","zh_CN"]

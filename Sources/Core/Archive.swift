@@ -68,7 +68,10 @@ public enum ArchiveExporter {
             guard trial.id.range(of: "^[A-Za-z0-9-]+$", options: .regularExpression) != nil else { throw LabError.invalid("记录目录无效") }
             let folder = sessions.appendingPathComponent(trial.id), prefix: String
             if let a = trial.assignment, !trial.diagnostic { prefix = String(format: "study_%@/action_%02d/slot_%03d/attempt_%03d/%@", a.study_id, a.action+1, a.record_number, a.slot_attempt, trial.id) }
-            else { prefix = "diagnostic/\(trial.id)" }
+            else if let calibration = trial.calibration {
+                guard UUID(uuidString:calibration.studyID) != nil else { throw LabError.invalid("校正记录受试者编号无效") }
+                prefix = "study_\(calibration.studyID)/calibration/\(calibration.kind.rawValue)/\(trial.id)"
+            } else { prefix = "diagnostic/\(trial.id)" }
             var missing: [String] = []
             let meta = try? JSONFile.read(folder.appendingPathComponent("metadata.json"))
             let expected = required + (meta?["live_monitor"] != nil ? [PoseMonitor.file] : [])
@@ -94,6 +97,7 @@ public enum ArchiveExporter {
             manifest.append(try zip.add(name: prefix+"/effective-result-at-export.json", data: JSONFile.bytes(effective)))
             manifest.append(try zip.add(name: prefix+"/file-integrity-at-export.json", data: JSONFile.bytes(["required_files":expected,"missing_files":missing,"complete":complete])))
             var row: [String: Any] = ["directory":trial.id,"archive_path":prefix,"diagnostic":trial.diagnostic,"counted_for_slot":false,"accepted":complete && trial.accepted,"integrity_passed":complete]
+            if let calibration = trial.calibration { row["subject_calibration"] = try JSONFile.object(calibration) }
             if let a = trial.assignment {
                 row["assignment"] = try JSONFile.object(a)
                 let latest = context.filter { $0.assignment?.study_id == a.study_id && $0.assignment?.action == a.action && $0.assignment?.slot == a.slot }.max { ($0.assignment?.slot_attempt ?? 0) < ($1.assignment?.slot_attempt ?? 0) }

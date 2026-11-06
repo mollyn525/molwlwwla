@@ -11,6 +11,13 @@ struct SettingsView: View {
         List {
             StatusBanner()
             Section { NavigationLink("单台磁场校准") { MagneticCalibrationView() }.accessibilityIdentifier("singleMagCalibration") }
+            Section("安装方式标记") {
+                Picker("安装方式",selection:Binding(get:{model.study?.mountingLabel ?? .vertical},set:{model.setMountingLabel($0)})) {
+                    ForEach(MountingLabel.allCases) { Text($0.title).tag($0) }
+                }.pickerStyle(.segmented).disabled(model.busy || model.study == nil).accessibilityIdentifier("mountingLabel")
+                Text("用于当前受试者的界面说明和采集记录；切换标记不会修改设备设置或 XYZ 数据。").font(.caption).foregroundStyle(.secondary)
+                if model.study == nil { Text("请先新建或继续受试者任务").font(.caption) }
+            }
             Section("异常提示") { Text("声音关闭 · 振动关闭"); Text("保留界面告警及质量事件。") }
             Section("手机查询上限") {
                 Stepper("\(model.queryHz)次/秒/台",value:$model.queryHz,in:40...200,step:5).disabled(model.busy)

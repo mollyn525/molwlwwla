@@ -34,23 +34,35 @@ extension BluetoothEngine {
     func startDiagnostic(root: URL, roster: [String:SensorBinding], study: Study? = nil, seconds: Int = 60) {
         work.async { self.beginRecording(root:root,roster:roster,study:study,assignment:nil,seconds:seconds,classificationOK:true) }
     }
-    func startFormal(root: URL, roster: [String:SensorBinding], study: Study, assignment: Assignment, classificationOK: Bool) {
-        work.async { self.beginRecording(root:root,roster:roster,study:study,assignment:assignment,seconds:0,classificationOK:classificationOK) }
+    func startFormal(root: URL, roster: [String:SensorBinding], study: Study, assignment: Assignment, classificationOK: Bool, calibrationTrials: [Trial]) {
+        work.async { self.beginRecording(root:root,roster:roster,study:study,assignment:assignment,seconds:0,classificationOK:classificationOK,calibrationTrials:calibrationTrials) }
     }
-    func beginRecording(root: URL, roster: [String:SensorBinding], study: Study?, assignment: Assignment?, seconds: Int, classificationOK: Bool) {
+    func startSubjectCalibration(root: URL, roster: [String:SensorBinding], study: Study, kind: SubjectCalibrationKind, classificationOK: Bool) {
+        work.async { self.beginRecording(root:root,roster:roster,study:study,assignment:nil,seconds:0,classificationOK:classificationOK,calibrationKind:kind) }
+    }
+    func beginRecording(root: URL, roster: [String:SensorBinding], study: Study?, assignment: Assignment?, seconds: Int, classificationOK: Bool, calibrationKind: SubjectCalibrationKind? = nil, calibrationTrials: [Trial] = []) {
         defer { notifyRequestFinished() }
         guard idle(), magneticJob.phase != .uncertain, appActive, !passive, central.state == .poweredOn else { message = "请保持前台并结束其他操作，正常连接后再录制"; return }
-        let diagnostic = assignment == nil
+        let diagnostic = assignment == nil && calibrationKind == nil
         guard !diagnostic || seconds == 0 || (5...600).contains(seconds) else { message = "限时诊断5–600秒，或选择手动结束"; return }
         refreshStorage()
         let selected = links.filter { $0.value.wanted }
         guard !selected.isEmpty, selected.values.allSatisfy({ $0.initialized && $0.connected && !$0.closing && !$0.maintenance }) else { message = "选定设备必须全部连接并初始化"; return }
-        if let assignment {
-            let check = Preflight.evaluate(study:study?.id,nextAction:assignment.action,roster:roster,devices:links.values.map { readiness($0,Self.now()) },idle:idle(),bluetooth:true,freeBytes:freeBytes,fresh:true,normalMode:!passive,classificationOK:classificationOK)
-            guard check.ready, assignment.study_id == study?.id else { message = "正式采前检查未通过："+(check.blockers.first.map { $0.title+"，"+$0.detail } ?? "采集任务不一致"); return }
+        if !diagnostic {
+            let check = Preflight.evaluate(study:study?.id,nextAction:assignment?.action ?? 0,roster:roster,devices:links.values.map { readiness($0,Self.now()) },idle:idle(),bluetooth:true,freeBytes:freeBytes,fresh:true,normalMode:!passive,classificationOK:classificationOK)
+            guard check.ready, study != nil, assignment == nil || assignment?.study_id == study?.id else { message = "正式采前检查未通过："+(check.blockers.first.map { $0.title+"，"+$0.detail } ?? "采集任务不一致"); return }
         }
         do {
-            var meta: [String:Any] = ["schema_version":7,"quality_policy":QualityPolicy.current.metadata,"platform":"iOS","package":Bundle.main.bundleIdentifier ?? "dev.imulink.baduanjin.ios",
+            var setup = "", calibration: SubjectCalibration?
+            if let study, !diagnostic {
+                let orientations = Dictionary(uniqueKeysWithValues:selected.map { ($0.key.uuidString,$0.value.registers[0x23] ?? -1) })
+                setup = try SubjectCalibration.setup(study:study,roster:roster,orientations:orientations)
+                if let kind = calibrationKind { calibration = SubjectCalibration(kind:kind,studyID:study.id,setup:setup) }
+                else if !SubjectCalibration.ready(studyID:study.id,setup:setup,trials:calibrationTrials) {
+                    throw LabError.invalid("请先完成当前受试者、当前设备配置下的静态和动态校正采集")
+                }
+            }
+            var meta: [String:Any] = ["schema_version":8,"quality_policy":QualityPolicy.current.metadata,"platform":"iOS","package":Bundle.main.bundleIdentifier ?? "dev.imulink.baduanjin.ios",
                 "app_version":Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "unknown",
                 "app_build":Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "unknown",
                 "system_version":ProcessInfo.processInfo.operatingSystemVersionString,"identity_kind":"corebluetooth_uuid_not_mac",
@@ -58,20 +70,30 @@ extension BluetoothEngine {
                 "recorded_ms":Self.wall(),"time_zone_offset_seconds":TimeZone.current.secondsFromGMT(),"roster":try JSONSerialization.jsonObject(with:JSONEncoder().encode(roster)),
                 "internal_sampling_synchronization_verified":false,"sampling_clock":"phone_receive_monotonic_not_sensor_sampling","host_query_hz":queryHz,
                 "relative_pose_method":"conjugate_normalized_reference_times_normalized_current; neutral_reference_not_anatomical_frame"]
+            meta["mounting_label"] = study?.mountingLabel?.rawValue
             meta["live_monitor"] = PoseMonitor.definition
             meta["magnetic_reference_ut"] = FieldReading.reference
             meta["devices"] = selected.map { id,d in ["address":id.uuidString,"name":d.name,"firmware":d.firmware,"settings":Dictionary(uniqueKeysWithValues:d.settings.map { (String($0.key),$0.value) })] as [String:Any] }
             meta["formal_start_policy"] = "15_ready_connections_and_inertial_gt40; wear_reference_configuration_are_reminders"
             if !diagnostic {
-                let check = Preflight.evaluate(study:study?.id,nextAction:assignment?.action,roster:roster,devices:links.values.map { readiness($0,Self.now()) },idle:idle(),bluetooth:true,freeBytes:freeBytes,fresh:true,normalMode:!passive,classificationOK:classificationOK)
+                let check = Preflight.evaluate(study:study?.id,nextAction:assignment?.action ?? 0,roster:roster,devices:links.values.map { readiness($0,Self.now()) },idle:idle(),bluetooth:true,freeBytes:freeBytes,fresh:true,normalMode:!passive,classificationOK:classificationOK)
                 meta["preflight_reminders"] = check.reminders.map { ["id":$0.id,"title":$0.title,"detail":$0.detail] }
             }
             meta["relative_pose_missing_reference_policy"] = "raw_data_retained; no_fabricated_or_diagnostic_or_other_study_reference"
             if let study { meta["study"] = try JSONFile.object(study); meta["study_id"] = study.id }
+            if let calibration {
+                meta["subject_calibration"] = try JSONFile.object(calibration)
+                meta["action_name"] = calibration.kind.title
+                meta["calibration_protocol"] = ["pose":calibration.kind == .staticPose ? "N-pose":"two_squats",
+                                                "duration_seconds":calibration.kind.seconds,"repetitions":calibration.kind == .dynamicSquats ? 2:0,
+                                                "posture_verification":"operator_confirmed","hardware_writes":false] as [String:Any]
+            } else if !diagnostic {
+                meta["calibration_record_ids"] = SubjectCalibrationKind.allCases.compactMap { SubjectCalibration.latest($0,studyID:study!.id,trials:calibrationTrials)?.id }
+            }
             if let assignment { meta["assignment"] = try JSONFile.object(assignment); meta["action_name"] = study!.actions[assignment.action] }
             writer = try SessionWriter(root:root,metadata:meta)
             targets = Array(selected.keys); startNS = Self.now(); actionNS = 0; endNS = seconds > 0 ? startNS+UInt64(seconds+3)*secondNS:0
-            fault = false; recordingDiagnostic = diagnostic; recordingAssignment = assignment; recordingRoster = roster; overMinute = false
+            fault = false; recordingCalibration = calibration; recordingDiagnostic = diagnostic; recordingAssignment = assignment; recordingRoster = roster; overMinute = false
             for role in Array(recordingRoster.keys) {
                 let unique = roster.values.filter { $0.peripheralID == roster[role]?.peripheralID }.count == 1
                 if !unique || recordingRoster[role]?.hasRecordingReference(studyID:study?.id) != true { recordingRoster[role]?.reference = nil; recordingRoster[role]?.referenceID = nil }

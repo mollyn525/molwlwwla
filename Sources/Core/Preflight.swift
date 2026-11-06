@@ -9,6 +9,10 @@ public struct DeviceReadiness: Sendable {
 public struct CheckItem: Identifiable, Sendable {
     public var id: String, role: String, title: String, passed: Bool, detail: String
     public var blocksStart = true
+    public init(id: String, role: String, title: String, passed: Bool, detail: String, blocksStart: Bool = true) {
+        self.blocksStart = blocksStart
+        self.id = id; self.role = role; self.title = title; self.passed = passed; self.detail = detail
+    }
 }
 public struct PreflightResult: Sendable {
     public var checks: [CheckItem]
@@ -24,7 +28,7 @@ public enum Preflight {
         var checks: [CheckItem] = []
         func add(_ id: String, _ role: String, _ title: String, _ passed: Bool, _ detail: String, blocking: Bool = true) { checks.append(CheckItem(id:role+":"+id,role:role,title:title,passed:passed,detail:detail,blocksStart:blocking)) }
         add("fresh","","服务状态",fresh,"服务状态超过1秒未刷新时不能开始")
-        add("study","","采集任务",study != nil && nextAction != nil,"按顺序完成八个动作，每个15条")
+        add("study","","采集任务",study != nil && nextAction != nil,"任选八个动作采集，每个动作15条")
         add("idle","","当前操作",idle,"请结束录制、保存、导出、佩戴检查或批量操作")
         add("bluetooth","","手机蓝牙",bluetooth,"开启蓝牙并授权本App")
         add("storage","","可用空间",freeBytes >= 256*1024*1024,"至少保留256MiB；录制时低于64MiB自动结束并记异常")
@@ -67,6 +71,10 @@ public enum Preflight {
 }
 
 public enum RecordingPolicy {
+    public static func calibrationCompleted(kind: SubjectCalibrationKind, duration: Double, completionConfirmed: Bool) -> Bool {
+        guard duration.isFinite, duration > 0, completionConfirmed else { return false }
+        return kind == .dynamicSquats || duration >= 5
+    }
     public static func summary(diagnostic: Bool, actionStarted: Bool, userEnded: Bool, quality: Bool) -> (accepted: Bool, normal: Bool, status: String) {
         let normal = !diagnostic && actionStarted && userEnded
         if diagnostic { return (false,false,quality ? "diagnostic_pass":"quality_failed") }

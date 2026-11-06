@@ -21,9 +21,11 @@ public struct SensorBinding: Codable, Sendable {
 public struct NameChange: Codable, Sendable { public var wall_ms: Int64, before: [String], after: [String] }
 public struct Study: Identifiable, Codable, Sendable {
     public var id: String, subject: String, created_ms: Int64, actions: [String], name_history: [NameChange]
+    public var calibrationRevision: String?
+    public var mountingLabel: MountingLabel?
     public init(subject: String, at: Int64) throws {
         guard subject.range(of: "^[A-Za-z0-9_-]{1,40}$", options: .regularExpression) != nil else { throw LabError.invalid("匿名编号限1–40位字母、数字、下划线或短横线") }
-        id = UUID().uuidString; self.subject = subject; created_ms = at; actions = (1...8).map { "动作\($0)" }; name_history = []
+        id = UUID().uuidString; self.subject = subject; created_ms = at; calibrationRevision = UUID().uuidString; mountingLabel = .vertical; actions = (1...8).map { "动作\($0)" }; name_history = []
     }
     public mutating func rename(_ names: [String], at: Int64) throws {
         let clean = names.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -51,6 +53,8 @@ public struct Review: Codable, Sendable {
 public struct Trial: Codable, Identifiable, Sendable {
     public var id: String, assignment: Assignment?, diagnostic: Bool, qualityPassed: Bool, normalCompletion: Bool, status: String
     public var reviews: [Review]
+    public var calibration: SubjectCalibration?
+    public var studyID: String? { assignment?.study_id ?? calibration?.studyID }
     public init(id: String, assignment: Assignment?, diagnostic: Bool, quality: Bool, normal: Bool, status: String, reviews: [Review] = []) {
         self.id = id; self.assignment = assignment; self.diagnostic = diagnostic; qualityPassed = quality; normalCompletion = normal; self.status = status; self.reviews = reviews
     }
@@ -85,7 +89,7 @@ public struct SlotBook {
     public var nextAction: Int? { (0..<8).first { count(action: $0) < 15 } }
     public func nextSlot(action: Int, retry: Bool) -> Int? { (1...15).first { state(action: action, slot: $0) == (retry ? "待补录" : "未采集") } }
     public func begin(action: Int, slot: Int) throws -> Assignment {
-        guard nextAction == action, !accepted(action: action, slot: slot) else { throw LabError.invalid("请完成最早未完成动作，合格编号需先标记补录") }
+        guard (0..<8).contains(action), (1...15).contains(slot), !accepted(action: action, slot: slot) else { throw LabError.invalid("请选择有效编号，合格编号需先标记补录") }
         let rows = attempts(action: action, slot: slot)
         guard Set(rows.compactMap { $0.assignment?.slot_attempt }).count == rows.count else { throw LabError.invalid("尝试编号重复，须核查记录") }
         return try Assignment(study: studyID, action: action, slot: slot, attempt: (rows.compactMap { $0.assignment?.slot_attempt }.max() ?? 0)+1)

@@ -10,6 +10,7 @@ struct CaptureView: View {
             StatusBanner()
             Section("本次采集任务") {
                 Text(model.study.map { "\($0.subject) · \(model.book.total)/120条合格" } ?? "尚未建立任务")
+                NavigationLink("受试者静态 / 动态校正") { SubjectCalibrationView() }.disabled(model.study == nil)
                 NavigationLink("开始正式收集") { CollectionView() }.disabled(model.study == nil)
                 Button("新建受试者任务") { showNew = true }.disabled(model.busy)
                 NavigationLink("查看 / 继续历史任务") {
@@ -22,10 +23,12 @@ struct CaptureView: View {
                 Text("诊断独立保存，不占正式编号。点击即保存，3秒后标记动作开始。")
                 Button("开始诊断录制（手动结束）") { model.diagnostic(seconds:0) }.disabled(model.busy)
                 Button("开始60秒诊断") { model.diagnostic(seconds:60) }.disabled(model.busy)
-                RecordingControls()
                 Text("采集时保持App前台；离开前台会结束并保留异常记录。").font(.caption).foregroundStyle(.secondary)
             }
         }.buttonStyle(.borderless).navigationTitle("采集")
+         .safeAreaInset(edge:.bottom) {
+             if model.engineState.recording || model.engineState.saving { CaptureDock(title:"",enabled:false,identifier:"diagnosticDock") {} }
+         }
          .alert("新建匿名受试者任务",isPresented:$showNew) {
             TextField("例如 S001",text:$subject).textInputAutocapitalization(.never)
             Button("建立") { model.create(subject) }; Button("取消",role:.cancel) {}
@@ -38,7 +41,18 @@ struct RecordingControls: View {
         if model.engineState.recording || model.engineState.saving {
             if let number = model.engineState.recordNumber { Text(String(format:"正在记录 %03d · 第%d次尝试",number,model.engineState.recordAttempt ?? 1)).font(.headline) }
             Text(model.engineState.saving ? "正在保存，请稍候" : model.engineState.countdown > 0 ? "准备 \(model.engineState.countdown)" : String(format:"动作段 %.1f 秒",model.engineState.elapsed)).font(.title2.monospacedDigit())
-            Button("结束并保存") { model.engine.stop() }.buttonStyle(.borderedProminent).disabled(!model.engineState.recording)
+            if model.engineState.recordingCalibration == .staticPose {
+                Text("N-pose 保持不动，满5秒自动保存").font(.subheadline)
+                Button("提前结束并保留本次") { model.engine.stop() }.buttonStyle(.bordered).disabled(!model.engineState.recording)
+            } else {
+                Button(model.engineState.recordingCalibration == .dynamicSquats ? "已完成两个深蹲，结束并保存" : "结束并保存") {
+                    model.engine.stop(calibrationComplete:model.engineState.recordingCalibration == .dynamicSquats)
+                }.buttonStyle(.borderedProminent).controlSize(.large).disabled(!model.engineState.recording).accessibilityIdentifier("recordingStop")
+                if model.engineState.recordingCalibration == .dynamicSquats {
+                    Button("本次未完成，结束并保留") { model.engine.stop() }
+                        .buttonStyle(.bordered).disabled(!model.engineState.recording)
+                }
+            }
         }
     }
 }
@@ -49,6 +63,7 @@ struct CollectionView: View {
     var body: some View {
         List {
             StatusBanner()
+            NavigationLink("受试者静态 / 动态校正") { SubjectCalibrationView() }.accessibilityIdentifier("subjectCalibration")
             Text("八个动作各15条，共120个固定编号。正常结束且数据质量通过后默认正常；发现问题再标记补录。")
             Text("导出按动作、编号和尝试分类，每次均附示例格式TXT。").font(.caption).foregroundStyle(.secondary)
             Text("\(model.study?.subject ?? "无任务") · \(model.book.total)/120条合格").font(.headline)
@@ -62,9 +77,12 @@ struct CollectionView: View {
                     VStack(alignment:.leading) { Text(model.study?.actions[a] ?? "动作\(a+1)").font(.headline); Text(String(format:"%03d–%03d · %d/15合格",a*15+1,(a+1)*15,model.book.count(action:a))) }
                 }.accessibilityIdentifier("collectionAction\(a)")
             }
-            Button("导出当前任务全部尝试") { model.export(model.trials.filter { $0.assignment?.study_id == model.study?.id && !$0.diagnostic }) }.disabled(model.busy)
+            Button("导出当前任务全部尝试") { model.export(model.trials.filter { $0.studyID == model.study?.id && !$0.diagnostic }) }.disabled(model.busy)
             NavigationLink("查看完整采前清单") { PreflightView() }
         }.buttonStyle(.borderless).navigationTitle("正式收集")
+         .safeAreaInset(edge:.bottom) {
+             if model.engineState.recording || model.engineState.saving { CaptureDock(title:"",enabled:false,identifier:"collectionDock") {} }
+         }
          .sheet(isPresented:$edit) {
             NavigationStack {
                 Form { ForEach(0..<8,id:\.self) { i in TextField("动作\(i+1)",text:$names[i]) } }
@@ -83,7 +101,7 @@ struct ActionView: View {
     @State private var retryLatest = false
     init(action: Int, initialSlot: Int = 1) { self.action = action; _slot = State(initialValue:initialSlot) }
     private var rows: [Trial] { model.book.attempts(action:action,slot:slot) }
-    private var startAllowed: Bool { model.preflight.ready && model.book.nextAction == action && !model.book.accepted(action:action,slot:slot) }
+    private var startAllowed: Bool { model.preflight.ready && !model.book.accepted(action:action,slot:slot) }
     var body: some View {
         List {
             StatusBanner()
@@ -96,10 +114,8 @@ struct ActionView: View {
                 }
             }
             Text("第\(slot)/15条 · 下次第\((rows.last?.assignment?.slot_attempt ?? 0)+1)次尝试").font(.headline)
-            Button("开始本条采集") { model.start(action:action,slot:slot) }.buttonStyle(.borderedProminent).disabled(!startAllowed).accessibilityIdentifier("formalStart")
             Text("频率要求：每台加速度、角速度各 >40 Hz，平均值包含断流时间。").font(.caption).foregroundStyle(.secondary)
             if !startAllowed { blockedStartDetails }
-            RecordingControls()
             HStack {
                 Button("继续正常采集") { if let next = model.book.nextSlot(action:action,retry:false) { slot = next } }.disabled(model.busy || model.book.nextSlot(action:action,retry:false) == nil)
                 Button("定位待补录") { if let next = model.book.nextSlot(action:action,retry:true) { slot = next } }.disabled(model.busy || model.book.nextSlot(action:action,retry:true) == nil)
@@ -110,12 +126,15 @@ struct ActionView: View {
             }
             if model.book.count(action:action) == 15, let next = model.book.nextAction {
                 NavigationLink("本动作已完成，进入\(model.study?.actions[next] ?? "下一动作")") { ActionView(action:next) }
-            } else if model.book.nextAction != action { Text("须先完成最早未完成动作；历史记录仍可查看或标记补录。").font(.footnote).foregroundStyle(.orange) }
+            }
             Section("本条所有尝试") {
                 ForEach(rows.reversed()) { trial in NavigationLink { RecordView(trial:trial) } label: { Text("尝试\(trial.assignment?.slot_attempt ?? 0) · \(trial.accepted ? "已合格":"待补录")") } }
             }
             preflightSection
         }.buttonStyle(.borderless).navigationTitle(model.study?.actions[action] ?? "动作\(action+1)")
+         .safeAreaInset(edge:.bottom) {
+             CaptureDock(title:"开始本条采集",enabled:startAllowed,identifier:"formalStart") { model.start(action:action,slot:slot) }
+         }
          .confirmationDialog("标记待补录，原始记录保留",isPresented:$retryLatest) {
              ForEach(["数据异常","动作做错","提前结束","绑带松动","其他原因"],id:\.self) { reason in Button(reason) { if let latest = rows.last { model.retry(latest,reason:reason) } } }
          }
@@ -124,11 +143,8 @@ struct ActionView: View {
         VStack(alignment:.leading,spacing:6) {
             Text("暂不能开始的原因").font(.headline).accessibilityIdentifier("formalBlockedReason")
             if model.book.accepted(action:action,slot:slot) { Text("本编号已有合格记录；需要重采时，先点“这条有问题，标记补录”。") }
-            if model.book.nextAction != action {
-                if let next = model.book.nextAction { Text("请先完成\(model.study?.actions[next] ?? "动作\(next+1)")的15条合格记录。") }
-                else { Text("当前任务120条均已完成。") }
-            }
             ForEach(model.preflight.blockers.prefix(3)) { row in Text(row.title+"："+row.detail).font(.footnote) }
+            NavigationLink("进行静态 / 动态校正") { SubjectCalibrationView() }
             NavigationLink("查看原因与处理步骤") { PreflightView() }.accessibilityIdentifier("formalBlockedHelp")
         }.foregroundStyle(.orange)
     }
@@ -148,7 +164,8 @@ struct PreflightView: View {
         TimelineView(.periodic(from:.now,by:1)) { _ in
             List {
                 Text(model.preflight.ready ? "可以开始采集":"\(model.preflight.blockers.count)项开始条件待处理").font(.title2)
-                Text("主要条件：15台实际连接并就绪，每台加速度、角速度各 >40 Hz。佩戴、参考姿态和配置检查属于提醒，未通过也可采集。").font(.footnote)
+                Text("主要条件：15台实际连接并就绪，每台加速度、角速度各 >40 Hz；正式动作前完成本受试者的两项校正采集。佩戴、参考姿态和配置检查属于提醒。").font(.footnote)
+                NavigationLink("受试者静态 / 动态校正") { SubjectCalibrationView() }
                 NavigationLink("设备绑定与连接") { DevicesView() }
                 NavigationLink("配置读取与核验") { SettingsView() }
                 NavigationLink("佩戴确认与参考姿态") { WearingView() }
