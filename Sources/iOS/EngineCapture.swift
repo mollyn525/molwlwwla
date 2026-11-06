@@ -70,7 +70,7 @@ extension BluetoothEngine {
                 "recorded_ms":Self.wall(),"time_zone_offset_seconds":TimeZone.current.secondsFromGMT(),"roster":try JSONSerialization.jsonObject(with:JSONEncoder().encode(roster)),
                 "internal_sampling_synchronization_verified":false,"sampling_clock":"phone_receive_monotonic_not_sensor_sampling","host_query_hz":queryHz,
                 "relative_pose_method":"conjugate_normalized_reference_times_normalized_current; neutral_reference_not_anatomical_frame"]
-            meta["mounting_label"] = study?.mountingLabel?.rawValue
+            meta["mounting_label"] = study.map { ($0.mountingLabel ?? .vertical).rawValue }
             meta["live_monitor"] = PoseMonitor.definition
             meta["magnetic_reference_ut"] = FieldReading.reference
             meta["devices"] = selected.map { id,d in ["address":id.uuidString,"name":d.name,"firmware":d.firmware,"settings":Dictionary(uniqueKeysWithValues:d.settings.map { (String($0.key),$0.value) })] as [String:Any] }
