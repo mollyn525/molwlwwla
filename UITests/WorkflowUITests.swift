@@ -17,6 +17,7 @@ final class WorkflowUITests: XCTestCase {
         let preparation = app.buttons["受试者静态 / 动态校正"]
         XCTAssertTrue(preparation.exists); preparation.tap()
         XCTAssertTrue(app.navigationBars["受试者校正采集"].waitForExistence(timeout:5))
+        XCTAssertTrue(app.segmentedControls.buttons["动态 两个深蹲"].isSelected)
         XCTAssertTrue(stop.isHittable)
         app.swipeUp(); XCTAssertTrue(stop.isHittable)
         attach(app,"校正采集与固定结束按钮")

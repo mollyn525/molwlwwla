@@ -49,6 +49,12 @@ struct SubjectCalibrationView: View {
                 }
             }
         }.navigationTitle("受试者校正采集")
+         .onAppear {
+             if model.engineState.recording, let active = model.engineState.recordingCalibration { kind = active }
+         }
+         .onChange(of:model.engineState.recordingCalibration) { _, active in
+             if model.engineState.recording, let active { kind = active }
+         }
          .safeAreaInset(edge:.bottom) {
              CaptureDock(title:rows.isEmpty ? "开始本项采集" : "重新采集本项",enabled:model.calibrationPreflight.ready,identifier:"subjectCalibrationStart") { confirm = true }
          }
