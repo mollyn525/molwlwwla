@@ -150,7 +150,7 @@ import BaduanjinCore
         do {
             try files.invalidateSubjectCalibration(); study = files.study
             pending = true; engine.beginBatch(calibrate:calibrate,rewrite:rewrite,placementConfirmed:placementConfirmed)
-        } catch { error = error.localizedDescription }
+        } catch { self.error = error.localizedDescription }
     }
     func setQueryHz() { guard !busy, (40...200).contains(queryHz) else { return }; UserDefaults.standard.set(queryHz,forKey:"queryHz"); engine.setQueryHz(queryHz) }
     func export(_ rows: [Trial]) {
