@@ -23,6 +23,9 @@ struct EngineSnapshot {
     var operationResults: [String] = []
     var magTarget: String?, magPhase = MagPhase.idle, magMessage = "", headingPending = false
     var parallelCalibration = false, operationProgress: [OperationProgress] = []
+    #if DEBUG
+    var lifecycleProbe = ""
+    #endif
 }
 struct OperationProgress: Identifiable {
     let id: String, name: String, message: String, finished: Bool, passed: Bool, saveSubmitted: Bool
@@ -54,7 +57,13 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     var onMagPrepare: ((String, @escaping (String?) -> Void) -> Void)?
     var scanning = false, scanGeneration = UUID(), cursor = 0, lastPublish: UInt64 = 0, lastFlush: UInt64 = 0
     var writer: SessionWriter?, targets: [UUID] = [], startNS: UInt64 = 0, actionNS: UInt64 = 0, endNS: UInt64 = 0, fault = false, saving = false
-    var message = "请扫描并逐一核对设备编号", appActive = true
+    var message = "请扫描并逐一核对设备编号", appActive = false
+    var lifecycle = AcquisitionLifecycle()
+    #if DEBUG
+    var lifecycleTestRoot: URL?, lifecycleTestID: String?
+    var lifecycleTestTicks = 0, lifecycleInactiveTicks = 0
+    var lifecycleTestLast: UInt64 = 0
+    #endif
     var connectionLog: [String] = []
     var root: URL?, lastStorage: UInt64 = 0, lastHealth: UInt64 = 0, freeBytes: Int64 = -1
     var queryHz = 90, passive = false, passiveEnd: UInt64 = 0
@@ -108,11 +117,21 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         for d in self.links.values where d.wanted && d.initialized { if d.reads.isEmpty && d.reading == nil { d.reads = [0x03,0x23,0x24,0x96] } }
         self.message = "读取50Hz、九轴与安装方向，不修改传感器"
     } }
-    func active(_ value: Bool) { work.async {
-        self.appActive = value
-        if !value && self.writer != nil { self.fault = true; self.event(nil, "app_left_foreground"); self.finish(reason: "应用离开前台，后台采集尚未验收", at: Self.now()) }
-        if !value { self.central?.stopScan(); self.scanning = false; self.scanGeneration = UUID() }
-        if !value { self.interruptMag("应用离开前台"); self.headingToken = nil; self.abortOperations("应用离开前台，停止后续操作；已提交指令的硬件状态须核验"); self.cancelWearing("佩戴检查因离开前台取消，请重新进行") }
+    func scene(_ phase: AcquisitionPhase) { work.async {
+        guard self.lifecycle.phase != phase else { return }
+        self.lifecycle.transition(to:phase); self.appActive = self.lifecycle.interactive
+        self.event(nil,"scene_phase=" + phase.rawValue)
+        if phase == .background && self.writer != nil {
+            self.fault = true
+            self.finish(reason:"应用进入后台，结束并保留本次记录",at:Self.now())
+        }
+        if !self.appActive {
+            self.central?.stopScan(); self.scanning = false; self.scanGeneration = UUID()
+            self.interruptMag("界面暂时不可交互"); self.headingToken = nil
+            self.abortOperations("界面暂时不可交互，停止后续操作；已提交指令的硬件状态须核验")
+            self.cancelWearing("佩戴检查因界面暂时不可交互取消，请重新进行")
+        }
+        self.publish(Self.now())
     } }
     func stop(calibrationComplete: Bool = false) { work.async { self.finish(reason:"手动结束",at:Self.now(),userEnded:true,calibrationComplete:calibrationComplete) } }
     func event(_ d: Link?, _ text: String) { writer?.event(id: d?.peripheral.identifier.uuidString ?? "", ns: Self.now(), message: text) }
@@ -167,12 +186,15 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     }
     func tick() {
         let now = Self.now()
+        #if DEBUG
+        tickLifecycleFixture(now)
+        #endif
         if now-lastStorage >= secondNS { refreshStorage(); lastStorage = now }
         if passiveEnd > 0 && now >= passiveEnd {
             for d in links.values { d.wanted = false; central.cancelPeripheralConnection(d.peripheral) }
             passive = false; passiveEnd = 0; message = "仅连接诊断到时，已断开并清除连接目标；未启动查询"; log(nil,message)
         }
-        if central?.state == .poweredOn && appActive {
+        if central?.state == .poweredOn && lifecycle.acquisitionAllowed {
             let values = links.values.sorted { $0.peripheral.identifier.uuidString < $1.peripheral.identifier.uuidString }
             var connecting = values.filter { $0.wanted && $0.peripheral.state == .connecting }.count
             for d in values where d.wanted && !d.closing {
@@ -230,6 +252,9 @@ final class BluetoothEngine: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     }
     func publish(_ now: UInt64) {
         var snapshot = EngineSnapshot(); snapshot.enabled = central?.state == .poweredOn; snapshot.scanning = scanning; snapshot.recording = writer != nil; snapshot.saving = saving
+        #if DEBUG
+        snapshot.lifecycleProbe = lifecycleFixtureProbe
+        #endif
         snapshot.timestamp = now; snapshot.freeBytes = freeBytes; snapshot.queuedWrites = writer?.status().queued ?? 0; snapshot.storedBytes = writer?.status().storedBytes ?? 0
         snapshot.batch = batch != nil; snapshot.movement = movementRole != nil || referencePending; snapshot.batchMessage = batch?.message ?? "批量操作已结束"; snapshot.queryHz = queryHz; snapshot.passive = passive
         snapshot.operationResults = operationResults; snapshot.recordingCalibration = recordingCalibration?.kind; snapshot.recordingDiagnostic = recordingDiagnostic; snapshot.recordNumber = recordingAssignment?.record_number; snapshot.recordAttempt = recordingAssignment?.slot_attempt

@@ -5,6 +5,7 @@ import BaduanjinCore
 @MainActor final class AppModel: ObservableObject {
     @Published var engineState = EngineSnapshot()
     @Published var studies: [Study] = []
+    @Published var deletedStudies: [DeletedStudy] = []
     @Published var trials: [Trial] = []
     @Published var roster: [String: SensorBinding] = [:]
     @Published var study: Study?
@@ -26,7 +27,14 @@ import BaduanjinCore
     init() {
         do {
             let docs = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            files = try StudyFiles(root: docs.appendingPathComponent("Baduanjin",isDirectory:true)); reload()
+            var storage = docs.appendingPathComponent("Baduanjin",isDirectory:true)
+            #if DEBUG
+            if let argument = ProcessInfo.processInfo.arguments.first(where:{ $0.hasPrefix("--ui-storage-id=") }),
+               let id = UUID(uuidString:String(argument.dropFirst("--ui-storage-id=".count))) {
+                storage = docs.appendingPathComponent("BaduanjinUITests/"+id.uuidString,isDirectory:true)
+            }
+            #endif
+            files = try StudyFiles(root:storage); reload()
             let savedHz = UserDefaults.standard.integer(forKey:"queryHz"); queryHz = (40...200).contains(savedHz) ? savedHz:90
             engine.configure(root:files!.root,queryHz:queryHz)
         } catch { self.error = "读取本App记录失败：\(error.localizedDescription)；请先导出文件核查" }
@@ -75,6 +83,10 @@ import BaduanjinCore
         if ProcessInfo.processInfo.arguments.contains("--recording-dock-ui-fixture") {
             study = try? Study(subject:"UI_FIXTURE",at:1)
         }
+        if ProcessInfo.processInfo.arguments.contains("--lifecycle-ui-fixture"),
+           ProcessInfo.processInfo.arguments.contains(where:{ $0.hasPrefix("--ui-storage-id=") }), let files {
+            engine.prepareLifecycleFixture(files.sessions)
+        }
         // Simulator UI fixture only; in-memory, no hardware writes or persistent history changes.
         if ProcessInfo.processInfo.arguments.contains("--calibration-ui-fixture") {
             let details: [String:Any] = ["operation_id":"UI_CALIBRATION","name":"模拟设备","type":"accelerometer_calibration","save_submitted":true,"static_check_passed":true,"final_window_passed":true,"result":"静态复核通过（模拟界面测试）","fresh_before":["static_mean_g":[0.01,0.02,0.99]],"after":["static_mean_g":[0.0,0.0,1.0]],"recovering_before_save_entered":true]
@@ -85,7 +97,7 @@ import BaduanjinCore
     func reload() {
         guard let files else { return }
         do {
-            try files.recover(); studies = try files.studies(); study = files.study; roster = files.roster; trials = files.trials
+            try files.recover(); studies = try files.studies(); deletedStudies = try files.deletedStudies(); study = files.study; roster = files.roster; trials = files.trials
             details = Dictionary(uniqueKeysWithValues:trials.compactMap { trial in
                 guard let meta = try? files.metadata(trial.id), let summary = try? files.summary(trial.id) else { return nil }
                 return (trial.id,RecordDetail(metadata:meta,summary:summary))
@@ -106,6 +118,18 @@ import BaduanjinCore
     }
     func create(_ subject: String) { perform { try $0.create(subject: subject,at:BluetoothEngine.wall()); engine.clearLiveReferences() } }
     func activate(_ id: String) { perform { try $0.activate(id); engine.clearLiveReferences() } }
+    private func manageStudy(_ operation: (StudyFiles) throws -> Void) {
+        guard !busy, let files else { return }
+        do { try operation(files) } catch { self.error = error.localizedDescription }
+        reload()
+    }
+    func trashStudy(_ id: String) {
+        let wasActive = study?.id == id
+        manageStudy { try $0.trashStudy(id,at:BluetoothEngine.wall()) }
+        if wasActive && study == nil { engine.clearLiveReferences() }
+    }
+    func restoreStudy(_ id: String) { manageStudy { try $0.restoreStudy(id) } }
+    func purgeStudy(_ id: String) { manageStudy { try $0.permanentlyDeleteStudy(id) } }
     func rename(_ names: [String]) { perform { try $0.rename(names,at:BluetoothEngine.wall()) } }
     func bind(role: String, id: String, name: String) { perform { try $0.bind(role:role,id:id,name:name); engine.clearLiveReferences() } }
     func retry(_ trial: Trial, reason: String) { perform { try $0.markRetry(id:trial.id,reason:reason,revision:trial.reviews.count,at:BluetoothEngine.wall()) } }
@@ -154,7 +178,9 @@ import BaduanjinCore
     }
     func setQueryHz() { guard !busy, (40...200).contains(queryHz) else { return }; UserDefaults.standard.set(queryHz,forKey:"queryHz"); engine.setQueryHz(queryHz) }
     func export(_ rows: [Trial]) {
-        guard !busy, let files else { return }; exporting = true; exportProgress = "准备导出…"
+        guard !busy, let files else { return }
+        guard rows.allSatisfy({ row in trials.contains(where:{ $0.id == row.id }) }) else { error = "记录已移入最近删除或不存在，请刷新后导出"; return }
+        exporting = true; exportProgress = "准备导出…"
         let cancellation = ExportCancellation(); self.cancellation = cancellation
         let staged = files.root.appendingPathComponent("exports/\(UUID().uuidString).partial.zip")
         let destination = files.root.appendingPathComponent("exports/八段锦-\(BluetoothEngine.wall()).zip")

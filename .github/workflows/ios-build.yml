@@ -11,7 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: macos-15-intel
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
     steps:
@@ -40,7 +40,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Run simulator workflow tests
-        timeout-minutes: 15
+        timeout-minutes: 25
         run: bash tools/build_macos.sh ui
       - name: Preserve build logs
         if: always()

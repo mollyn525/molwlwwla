@@ -20,12 +20,14 @@ put('sources','PBXSourcesBuildPhase','buildActionMask = 2147483647; files = %s; 
 put('frameworks','PBXFrameworksBuildPhase','buildActionMask = 2147483647; files = %s; runOnlyForDeploymentPostprocessing = 0;'%refs(['corebuild']))
 put('resources','PBXResourcesBuildPhase','buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
 put('uitestproduct','PBXFileReference','explicitFileType = wrapper.cfbundle; path = WorkflowUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR;')
-put('uitestfile','PBXFileReference','lastKnownFileType = sourcecode.swift; path = UITests/WorkflowUITests.swift; sourceTree = SOURCE_ROOT;')
-put('uitestbuild','PBXBuildFile','fileRef = %s;'%uid('uitestfile'))
-put('uitestsources','PBXSourcesBuildPhase','buildActionMask = 2147483647; files = %s; runOnlyForDeploymentPostprocessing = 0;'%refs(['uitestbuild']))
+ui_files=sorted(p.relative_to(ROOT).as_posix() for p in (ROOT/'UITests').glob('*.swift'))
+for f in ui_files:
+    put(f,'PBXFileReference','lastKnownFileType = sourcecode.swift; path = %s; sourceTree = SOURCE_ROOT;'%q(f))
+    put('build:'+f,'PBXBuildFile','fileRef = %s;'%uid(f))
+put('uitestsources','PBXSourcesBuildPhase','buildActionMask = 2147483647; files = %s; runOnlyForDeploymentPostprocessing = 0;'%refs(['build:'+f for f in ui_files]))
 put('uitestdependency','PBXTargetDependency','target = %s;'%uid('app'))
 put('products','PBXGroup','name = Products; children = %s; sourceTree = "<group>";'%refs(['product','uitestproduct']))
-put('main','PBXGroup','children = %s; sourceTree = "<group>";'%refs(files+['uitestfile','plist','products']))
+put('main','PBXGroup','children = %s; sourceTree = "<group>";'%refs(files+ui_files+['plist','products']))
 common='SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; SWIFT_STRICT_CONCURRENCY = targeted; '
 target='PRODUCT_NAME = Baduanjin; PRODUCT_BUNDLE_IDENTIFIER = dev.imulink.baduanjin.ios; INFOPLIST_FILE = Info.plist; GENERATE_INFOPLIST_FILE = NO; TARGETED_DEVICE_FAMILY = 1; CODE_SIGN_STYLE = Automatic; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_EMIT_LOC_STRINGS = YES; '
 ui='PRODUCT_NAME = WorkflowUITests; PRODUCT_BUNDLE_IDENTIFIER = dev.imulink.baduanjin.ios.uitests; GENERATE_INFOPLIST_FILE = YES; TEST_TARGET_NAME = Baduanjin; TARGETED_DEVICE_FAMILY = 1; CODE_SIGN_STYLE = Automatic; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; '

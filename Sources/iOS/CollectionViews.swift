@@ -8,22 +8,23 @@ struct CaptureView: View {
     var body: some View {
         List {
             StatusBanner()
+            #if DEBUG
+            if !model.engineState.lifecycleProbe.isEmpty {
+                Text(model.engineState.lifecycleProbe).font(.caption2).accessibilityIdentifier("lifecycleProbe")
+            }
+            #endif
             Section("本次采集任务") {
                 Text(model.study.map { "\($0.subject) · \(model.book.total)/120条合格" } ?? "尚未建立任务")
                 NavigationLink("受试者静态 / 动态校正") { SubjectCalibrationView() }.disabled(model.study == nil)
                 NavigationLink("开始正式收集") { CollectionView() }.disabled(model.study == nil)
                 Button("新建受试者任务") { showNew = true }.disabled(model.busy)
-                NavigationLink("查看 / 继续历史任务") {
-                    List(model.studies) { study in
-                        Button { model.activate(study.id) } label: { VStack(alignment:.leading) { Text(study.subject); Text(Date(timeIntervalSince1970:Double(study.created_ms)/1000),style:.date).font(.caption); if model.study?.id == study.id { Text("当前任务").font(.caption).foregroundStyle(.teal) } } }.disabled(model.busy)
-                    }.navigationTitle("历史任务")
-                }
+                NavigationLink("受试者管理 / 最近删除") { StudyManagementView() }.accessibilityIdentifier("manageSubjects")
             }
             Section("诊断录制") {
                 Text("诊断独立保存，不占正式编号。点击即保存，3秒后标记动作开始。")
                 Button("开始诊断录制（手动结束）") { model.diagnostic(seconds:0) }.disabled(model.busy)
                 Button("开始60秒诊断") { model.diagnostic(seconds:60) }.disabled(model.busy)
-                Text("采集时保持App前台；离开前台会结束并保留异常记录。").font(.caption).foregroundStyle(.secondary)
+                Text("下拉通知中心或控制中心时继续采集；锁屏或切到其他 App 进入后台时结束并保留本次记录。").font(.caption).foregroundStyle(.secondary)
             }
         }.buttonStyle(.borderless).navigationTitle("采集")
          .safeAreaInset(edge:.bottom) {

@@ -37,7 +37,8 @@ assert info['NSBluetoothAlwaysUsageDescription'] and info['UIFileSharingEnabled'
 assert 'UIBackgroundModes' not in info
 project=(ROOT/'Baduanjin.xcodeproj/project.pbxproj').read_text(encoding='utf8')
 assert 'dev.imulink.baduanjin.ios' in project
-for p in (ROOT/'Sources/iOS').glob('*.swift'):assert p.relative_to(ROOT).as_posix() in project
+for folder in ['Sources/iOS','UITests']:
+    for p in (ROOT/folder).glob('*.swift'):assert p.relative_to(ROOT).as_posix() in project
 ET.parse(str(ROOT/'Baduanjin.xcodeproj/xcshareddata/xcschemes/Baduanjin.xcscheme'))
 fixture=json.loads((ROOT/'Tests/Fixtures/protocol-vectors.json').read_text(encoding='utf8'))
 assert len(fixture['cases'])>=100

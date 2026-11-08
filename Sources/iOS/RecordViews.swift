@@ -52,6 +52,10 @@ struct RecordView: View {
     private var current: Trial { model.trials.first { $0.id == trial.id } ?? trial }
     private var detail: RecordDetail? { model.details[trial.id] }
     var body: some View {
+        if model.trials.contains(where:{ $0.id == trial.id }) { recordContents }
+        else { ContentUnavailableView("记录已删除",systemImage:"trash",description:Text("可在受试者管理的最近删除中恢复。")).navigationTitle("记录详情") }
+    }
+    private var recordContents: some View {
         List {
             Section("本条结果") {
                 Text("导出ZIP包含示例格式TXT（27列），以及原始逐帧数据和各项来源时间。").font(.caption).foregroundStyle(.secondary)

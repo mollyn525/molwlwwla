@@ -35,10 +35,13 @@ public final class StudyFiles {
         try JSONFile.encode(next, to: root.appendingPathComponent("active-study.json")); study = next
     }
     public func studies() throws -> [Study] {
-        try fm.contentsOfDirectory(at: root.appendingPathComponent("studies"), includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }.map { try JSONFile.decode(Study.self, from: $0) }.sorted { $0.created_ms > $1.created_ms }
+        let removed = Set(try deletedStudies().map(\.id))
+        return try fm.contentsOfDirectory(at:root.appendingPathComponent("studies"),includingPropertiesForKeys:nil)
+            .filter { $0.pathExtension == "json" && !removed.contains($0.deletingPathExtension().lastPathComponent) }
+            .map { try JSONFile.decode(Study.self,from:$0) }.sorted { $0.created_ms > $1.created_ms }
     }
     public func activate(_ id: String) throws {
-        guard UUID(uuidString: id) != nil else { throw LabError.invalid("任务编号无效") }
+        guard UUID(uuidString:id) != nil, try !deletedStudies().contains(where:{ $0.id == id }) else { throw LabError.invalid("任务编号无效或受试者已移入最近删除") }
         let next = try JSONFile.decode(Study.self, from: root.appendingPathComponent("studies/\(id).json")); try commit(next); try resetWear(); try recover()
     }
     public func rename(_ names: [String], at: Int64) throws { guard var next = study else { throw LabError.invalid("请先建立任务") }; try next.rename(names, at: at); try commit(next) }
@@ -102,12 +105,38 @@ public final class StudyFiles {
         b.wearConfirmed = true; b.wearNote = clean; b.wearConfirmedMS = at
         try audit("wear_manual_confirmation",JSONFile.object(b)); var next = roster; next[role] = b; try saveRoster(next)
     }
+    public func deletedStudies() throws -> [DeletedStudy] { try StudyTrash(root:root).entries() }
+    public func trashStudy(_ id: String, at: Int64) throws {
+        guard let target = try studies().first(where:{ $0.id == id }) else { throw LabError.invalid("受试者任务不存在") }
+        try audit("subject_delete_requested",["study_id":id])
+        try StudyTrash(root:root).move(target,at:at)
+        try recover()
+    }
+    public func restoreStudy(_ id: String) throws {
+        try audit("subject_restore_requested",["study_id":id])
+        try StudyTrash(root:root).restore(id)
+        try recover()
+    }
+    public func permanentlyDeleteStudy(_ id: String) throws {
+        try audit("subject_purge_requested",["study_id":id])
+        try StudyTrash(root:root).permanentlyDelete(id)
+        try recover()
+    }
     public func recover() throws {
+        let removed = try deletedStudies()
+        let removedIDs = Set(removed.map(\.id)), hiddenSessions = Set(removed.flatMap(\.sessionIDs))
+        if let current = study, removedIDs.contains(current.id) {
+            try resetWear()
+            let active = root.appendingPathComponent("active-study.json")
+            if fm.fileExists(atPath:active.path) { try fm.removeItem(at:active) }
+            study = nil
+        }
         trials = []; warnings = auditWarning.map { [$0] } ?? []
         for dir in try fm.contentsOfDirectory(at: sessions, includingPropertiesForKeys: [.isDirectoryKey]) {
-            guard (try dir.resourceValues(forKeys: [.isDirectoryKey])).isDirectory == true else { continue }
+            guard !hiddenSessions.contains(dir.lastPathComponent), (try dir.resourceValues(forKeys: [.isDirectoryKey])).isDirectory == true else { continue }
             do {
                 let meta = try JSONFile.read(dir.appendingPathComponent("metadata.json")), summaryURL = dir.appendingPathComponent("summary.json")
+                if let owner = try StudyTrash.owner(meta), removedIDs.contains(owner) { continue }
                 if !fm.fileExists(atPath: summaryURL.path) { try JSONFile.write(["accepted":false,"quality_passed":false,"status":"incomplete_process_exit","recovered_ms":Int64(Date().timeIntervalSince1970*1000)], to: summaryURL) }
                 let summary = try JSONFile.read(summaryURL)
                 let assignment = try (meta["assignment"] as? [String: Any]).map { try JSONDecoder().decode(Assignment.self, from: JSONFile.bytes($0)) }
