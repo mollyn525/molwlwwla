@@ -24,7 +24,10 @@ final class StudyManagementUITests: XCTestCase {
             app.buttons["新建受试者任务"].tap()
             let dialog = app.alerts["新建匿名受试者任务"]
             XCTAssertTrue(dialog.waitForExistence(timeout:5))
-            dialog.textFields.firstMatch.tap(); dialog.textFields.firstMatch.typeText(name)
+            let input = dialog.textFields.firstMatch
+            input.tap()
+            let previous = input.value as? String ?? ""
+            input.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:previous.count)+name)
             dialog.buttons["建立"].tap()
         }
         tap(app.buttons["manageSubjects"],in:app)
