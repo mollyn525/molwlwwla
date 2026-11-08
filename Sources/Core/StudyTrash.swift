@@ -15,14 +15,14 @@ public struct StudyTrash {
     public init(root: URL) throws {
         self.root = root.resolvingSymlinksInPath().standardizedFileURL
         let folder = self.root.appendingPathComponent("recently-deleted",isDirectory:true)
-        guard folder.resolvingSymlinksInPath().standardizedFileURL == folder.standardizedFileURL else { throw LabError.invalid("最近删除目录无效") }
+        guard folder.resolvingSymlinksInPath().standardizedFileURL.path == folder.standardizedFileURL.path else { throw LabError.invalid("最近删除目录无效") }
         try fm.createDirectory(at:folder,withIntermediateDirectories:true)
     }
     private func item(_ folder: String, _ name: String) throws -> URL {
         guard name.range(of:"^[A-Za-z0-9.-]+$",options:.regularExpression) != nil, name != ".", name != ".." else { throw LabError.invalid("记录路径无效") }
         let base = root.appendingPathComponent(folder,isDirectory:true).standardizedFileURL
         let url = base.appendingPathComponent(name).standardizedFileURL
-        guard url.resolvingSymlinksInPath().standardizedFileURL == url, url.deletingLastPathComponent() == base else { throw LabError.invalid("记录路径包含链接，未删除任何外部文件") }
+        guard url.resolvingSymlinksInPath().standardizedFileURL.path == url.path, url.deletingLastPathComponent().path == base.path else { throw LabError.invalid("记录路径包含链接，未删除任何外部文件") }
         return url
     }
     private func marker(_ id: String) throws -> URL {
