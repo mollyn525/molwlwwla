@@ -54,16 +54,17 @@ final class WorkflowUITests: XCTestCase {
             let segment = modes.buttons[title]
             XCTAssertTrue(segment.waitForExistence(timeout:5))
             XCTAssertTrue(segment.isHittable)
-            // The iOS 26 simulator can emit the old value for XCTest's 50 ms tap.
-            // A 200 ms touch exercised the native input path successfully in the trace.
-            segment.press(forDuration:0.2)
+            // Exercise ordinary short taps while live telemetry keeps publishing.
+            segment.tap()
             checkMode(title,chart:chart)
         }
         attach(app,"监测分段切换前 Mag Norm")
         selectMode("Orientation",chart:"Orientation (°)")
         attach(app,"监测分段切换后 Orientation")
-        selectMode("Mag Norm",chart:"Magnetic Field (a.u.)")
-        selectMode("Orientation",chart:"Orientation (°)")
+        for _ in 0..<3 {
+            selectMode("Mag Norm",chart:"Magnetic Field (a.u.)")
+            selectMode("Orientation",chart:"Orientation (°)")
+        }
         modes.coordinate(withNormalizedOffset:CGVector(dx:0.75,dy:0.5))
             .press(forDuration:0.2,thenDragTo:modes.coordinate(withNormalizedOffset:CGVector(dx:0.25,dy:0.5)))
         checkMode("Mag Norm",chart:"Magnetic Field (a.u.)")

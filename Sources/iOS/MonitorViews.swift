@@ -69,6 +69,18 @@ private struct SensorAxes: View {
     }
 }
 
+/// Keep the native segment's interaction independent of 4 Hz telemetry refreshes.
+/// The immutable value makes equality compare the previous and next selection;
+/// the Binding still carries user changes back to MonitorView.
+private struct MonitorModePicker: View, Equatable {
+    @Binding var mode: Int
+    let value: Int
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.value == rhs.value }
+    var body: some View {
+        Picker("监测项目",selection:$mode) { Text("Mag Norm").tag(0); Text("Orientation").tag(1) }.pickerStyle(.segmented)
+    }
+}
+
 struct MonitorView: View {
     @EnvironmentObject var model: AppModel
     @State var selection = ""
@@ -90,7 +102,7 @@ struct MonitorView: View {
             if model.engineState.headingPending { Label("已确认放稳，请保持当前姿态约 3 秒",systemImage:"timer").foregroundStyle(.orange) }
             Section {
                 Picker("设备",selection:$selection) { Text("选择设备").tag(""); ForEach(devices) { Text(model.monitorLabel($0)).tag($0.id) } }
-                Picker("监测项目",selection:$mode) { Text("Mag Norm").tag(0); Text("Orientation").tag(1) }.pickerStyle(.segmented)
+                MonitorModePicker(mode:$mode,value:mode).equatable()
             }
             if mode == 0 {
                 Section {
