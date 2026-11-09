@@ -39,11 +39,8 @@ struct DevicesView: View {
                     counter("已连接",model.engineState.devices.filter { $0.wanted && $0.connected }.count)
                     counter("部位就绪",BodyRole.all.compactMap { model.device($0) }.filter { color($0) == .green }.count)
                 }
-                ViewThatFits(in:.horizontal) {
-                    HStack(spacing:12) { connectionButtons }
-                    VStack(spacing:8) { connectionButtons }
-                }.padding(.vertical,4)
-                TaskLink("实时监测 · Mag Norm / Orientation",detail:"磁场四条曲线、姿态三轴与航向归零",symbol:"waveform.path.ecg") { MonitorView() }.accessibilityIdentifier("liveMonitor")
+                AdaptiveActionRow { connectionButtons }.padding(.vertical,4)
+                NavigationLink("实时监测 · Mag Norm / Orientation") { MonitorView() }.accessibilityIdentifier("liveMonitor")
             }
             Section("部位就绪") {
                 BodyMapView(selectedRole:$bodyRole).frame(height:400)
@@ -69,14 +66,14 @@ struct DevicesView: View {
                 }
             }
             Text("部位就绪表示已连接、初始化，近期加速度和角速度均有更新且各 >40 Hz。佩戴与参考姿态见部位详情。").font(.footnote).foregroundStyle(.secondary)
-        }.buttonStyle(.borderless).navigationTitle("设备")
+        }.buttonStyle(.borderless).navigationTitle("设备").navigationBarTitleDisplayMode(.inline)
          .navigationDestination(item:$bodyRole) { index in RoleView(role:BodyRole.all[index]) }
     }
     private var connectionButtons: some View {
         Group {
-            Button { model.engine.scan() } label: { Label("扫描设备",systemImage:"magnifyingglass").frame(minHeight:32) }
+            Button { model.engine.scan() } label: { Label("扫描设备",systemImage:"magnifyingglass").fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,minHeight:32) }
                 .buttonStyle(.bordered).disabled(model.busy).accessibilityLabel("扫描设备")
-            Button { model.engine.connect(model.roster.values.map(\.peripheralID)) } label: { Label("连接已绑定",systemImage:"link").frame(minHeight:32) }
+            Button { model.engine.connect(model.roster.values.map(\.peripheralID)) } label: { Label("连接已绑定",systemImage:"link").fixedSize(horizontal:false,vertical:true).frame(maxWidth:.infinity,minHeight:32) }
                 .buttonStyle(.borderedProminent).disabled(model.busy || model.roster.isEmpty).accessibilityLabel("连接已绑定")
         }
     }

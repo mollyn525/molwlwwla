@@ -72,13 +72,15 @@ struct CollectionView: View {
             StatusBanner()
             Section("当前任务") {
                 CurrentTaskSummary()
-                TaskLink("受试者静态 / 动态校正",detail:"查看本受试者的两项采前采集",symbol:"figure.stand") { SubjectCalibrationView() }.accessibilityIdentifier("subjectCalibration")
-            }
-            Section("快速定位") {
-            if let next = model.book.nextAction {
-                NavigationLink("继续正常采集") { ActionView(action:next,initialSlot:model.book.nextSlot(action:next,retry:false) ?? model.book.nextSlot(action:next,retry:true) ?? 1) }
-                NavigationLink("定位待补录") { ActionView(action:next,initialSlot:model.book.nextSlot(action:next,retry:true) ?? 1) }.disabled(model.book.nextSlot(action:next,retry:true) == nil)
-            } else { Text("120条均已合格，可查看历史和分类导出").foregroundStyle(.teal) }
+                NavigationLink("受试者静态 / 动态校正") { SubjectCalibrationView() }.accessibilityIdentifier("subjectCalibration")
+                if let next = model.book.nextAction {
+                    AdaptiveActionRow {
+                        NavigationLink("继续正常采集") { ActionView(action:next,initialSlot:model.book.nextSlot(action:next,retry:false) ?? model.book.nextSlot(action:next,retry:true) ?? 1) }
+                            .frame(maxWidth:.infinity,minHeight:44,alignment:.leading)
+                        NavigationLink("定位待补录") { ActionView(action:next,initialSlot:model.book.nextSlot(action:next,retry:true) ?? 1) }
+                            .frame(maxWidth:.infinity,minHeight:44,alignment:.leading).disabled(model.book.nextSlot(action:next,retry:true) == nil)
+                    }.font(.subheadline)
+                } else { Text("120条均已合格，可查看历史和分类导出").foregroundStyle(.teal) }
             }
             Section("八个动作 · 可任选") {
             ForEach(0..<8,id:\.self) { a in

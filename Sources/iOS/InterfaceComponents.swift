@@ -34,6 +34,18 @@ struct TaskLink<Destination: View>: View {
         }.accessibilityLabel(title).accessibilityHint(detail)
     }
 }
+struct AdaptiveActionRow<Content: View>: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
+    let content: Content
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    var body: some View {
+        if typeSize.isAccessibilitySize {
+            VStack(alignment:.leading,spacing:InterfaceSpacing.related) { content }
+        } else {
+            HStack(spacing:InterfaceSpacing.row) { content }
+        }
+    }
+}
 struct CurrentTaskSummary: View {
     @EnvironmentObject var model: AppModel
     var body: some View {

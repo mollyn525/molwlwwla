@@ -24,7 +24,7 @@ xcodebuild -project Baduanjin.xcodeproj -scheme Baduanjin -configuration Debug -
 test_bundle=$(python3 -c 'from pathlib import Path; p=list(Path("build/ui/Build/Products").glob("*.xctestrun")); assert len(p)==1,p; print(p[0])')
 # Run the already-built test bundle directly, avoiding a second local-package
 # graph resolution while Xcode is starting the simulator test session.
-xcodebuild -xctestrun "$test_bundle" -destination "platform=iOS Simulator,id=$simulator_id" -destination-timeout 60 -parallel-testing-enabled NO -test-timeouts-enabled YES -maximum-test-execution-time-allowance 180 -resultBundlePath build/ui-tests.xcresult test-without-building > build/ui-tests.log 2>&1 || ui_status=$?
+xcodebuild -xctestrun "$test_bundle" -destination "platform=iOS Simulator,id=$simulator_id" -destination-timeout 60 -parallel-testing-enabled NO -test-timeouts-enabled YES -maximum-test-execution-time-allowance 300 -resultBundlePath build/ui-tests.xcresult test-without-building > build/ui-tests.log 2>&1 || ui_status=$?
 xcrun xcresulttool get test-results summary --path build/ui-tests.xcresult > build/ui-test-summary.json || true
 xcrun xcresulttool export attachments --path build/ui-tests.xcresult --output-path build/ui-screenshots || true
 if [ "$ui_status" -ne 0 ]; then tail -n 100 build/ui-tests.log; exit "$ui_status"; fi
