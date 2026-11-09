@@ -66,7 +66,7 @@ struct DevicesView: View {
                 }
             }
             Text("部位就绪表示已连接、初始化，近期加速度和角速度均有更新且各 >40 Hz。佩戴与参考姿态见部位详情。").font(.footnote).foregroundStyle(.secondary)
-        }.buttonStyle(.borderless).navigationTitle("设备").navigationBarTitleDisplayMode(.inline)
+        }.buttonStyle(.borderless).navigationTitle("设备").navigationBarTitleDisplayMode(.large)
          .navigationDestination(item:$bodyRole) { index in RoleView(role:BodyRole.all[index]) }
     }
     private var connectionButtons: some View {
