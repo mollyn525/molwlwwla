@@ -10,7 +10,9 @@ struct SettingsView: View {
     var body: some View {
         List {
             StatusBanner()
-            Section { NavigationLink("单台磁场校准") { MagneticCalibrationView() }.accessibilityIdentifier("singleMagCalibration") }
+            Section("磁场维护") {
+                TaskLink("单台磁场校准",detail:"按维特原版安卓流程，独立校准一台设备",symbol:"scope") { MagneticCalibrationView() }.accessibilityIdentifier("singleMagCalibration")
+            }
             Section("安装方式标记") {
                 Picker("安装方式",selection:Binding(get:{model.study?.mountingLabel ?? .vertical},set:{model.setMountingLabel($0)})) {
                     ForEach(MountingLabel.allCases) { Text($0.title).tag($0) }
@@ -18,28 +20,30 @@ struct SettingsView: View {
                 Text("用于当前受试者的界面说明和采集记录；切换标记不会修改设备设置或 XYZ 数据。").font(.caption).foregroundStyle(.secondary)
                 if model.study == nil { Text("请先新建或继续受试者任务").font(.caption) }
             }
-            Section("异常提示") { Text("声音关闭 · 振动关闭"); Text("保留界面告警及质量事件。") }
             Section("手机查询上限") {
                 Stepper("\(model.queryHz)次/秒/台",value:$model.queryHz,in:40...200,step:5).disabled(model.busy)
                 Button("应用查询上限") { model.setQueryHz() }.disabled(model.busy)
                 Text("默认90次/秒/台。上限不等于实际接收率或传感器内部采样率，不会修改传感器输出设置。").font(.caption).foregroundStyle(.secondary)
             }
             Section("统一传感器配置") {
-                Text("选中\(selectedCount)台 · 目标为50Hz、九轴，保留各设备安装方向；逐台读旧值、写入并回读。")
+                Text("选中\(selectedCount)台 · 目标为50Hz、九轴，保留各设备安装方向；逐台读旧值、写入并回读。").font(.footnote).foregroundStyle(.secondary)
                 Button("读取当前配置") { model.engine.readConfiguration() }.disabled(model.busy || selectedCount == 0)
                 Button("应用 / 重试未达标设备") { configure = true }.disabled(model.busy || selectedCount == 0)
                 Button("重新写入并核验模板") { rewrite = true }.disabled(model.busy || selectedCount == 0)
             }
             Section("硬件加速度校准") {
-                NavigationLink("查看加速度校准结果") { CalibrationResultsView() }.accessibilityIdentifier("calibrationResults")
+                TaskLink("查看加速度校准结果",detail:"查看每台设备的过程、前后读数和历史结果",symbol:"checklist") { CalibrationResultsView() }.accessibilityIdentifier("calibrationResults")
                 Text("佩戴前，按机身坐标标识让原始Z正向朝上（约+1g），放在水平稳定台面，至少放稳3秒；不能按外壳“正面”判断。")
                 Text("当前选中\(selectedCount)台，校准过程并行进行，每台独立复核和保存，单台失败不影响其他设备。全组通常约20–40秒，请预留1分钟，直到批次结束都保持不动。").font(.footnote).accessibilityIdentifier("parallelCalibrationExplanation")
                 Button("一起校准选中的 \(selectedCount) 台") { calibrate = true }.disabled(model.busy || selectedCount == 0).accessibilityIdentifier("parallelCalibrationStart")
-                Text("短暂停顿后等待数据恢复，重新取得约3秒完整稳定窗口再复核。明显运动、500ms以上间隙或断线仍会停止该台；不会重复发送启动校准。结果可随时通过上方按钮查看。").font(.caption).foregroundStyle(.secondary)
                 NavigationLink("查看逐台配置 / 校准结果") { OperationResultsView() }
-                Text("蓝牙指令仍依次提交，不代表硬件同步启动。离开前台、蓝牙整体不可用、用户取消或共同审计故障会停止整个批次。").font(.caption).foregroundStyle(.secondary)
+                DisclosureGroup("校准等待与中断说明") {
+                    Text("短暂停顿后等待数据恢复，重新取得约3秒完整稳定窗口再复核。明显运动、500ms以上间隙或断线仍会停止该台；不会重复发送启动校准。结果可随时通过上方按钮查看。").font(.caption).foregroundStyle(.secondary)
+                    Text("蓝牙指令仍依次提交，不代表硬件同步启动。离开前台、蓝牙整体不可用、用户取消或共同审计故障会停止整个批次。").font(.caption).foregroundStyle(.secondary)
+                }
             }
             if model.engineState.parallelCalibration { CalibrationProgressSection() }
+            Section("提示方式") { Text("声音关闭 · 振动关闭"); Text("保留界面告警及质量事件。").font(.footnote).foregroundStyle(.secondary) }
             Section("独立版本 \(model.version)") {
                 NavigationLink("连接诊断 / 导出日志") { ConnectionLogView() }
                 Text("保留本App现有任务、绑定与历史数据；ZIP通过系统分享或“文件”保存。")

@@ -20,15 +20,20 @@ struct RecordsView: View {
     var body: some View {
         List {
             StatusBanner()
-            Section("筛选与导出") {
+            Section("筛选记录") {
                 Toggle("仅当前任务",isOn:$currentTask)
                 Picker("动作",selection:$action) { Text("全部记录").tag(-1); Text("静态 / 动态校正").tag(-2); ForEach(0..<8,id:\.self) { i in Text(model.study?.actions[i] ?? "动作\(i+1)").tag(i) } }
                 Picker("结果",selection:$quality) { Text("全部").tag(0); Text("质量未通过").tag(1); Text("待补录").tag(2); Text("已合格").tag(3) }
+            }
+            Section("导出 · \(rows.count)条符合筛选") {
                 Button("导出当前任务全部尝试") { model.export(model.trials.filter { $0.studyID == model.study?.id && !$0.diagnostic }) }.disabled(model.busy || model.study == nil)
                 Button("导出筛选后的\(rows.count)条记录") { model.export(rows) }.disabled(model.busy || rows.isEmpty)
                 Button("刷新记录") { model.reload() }.disabled(model.busy)
             }
-            if rows.isEmpty { Text("没有符合筛选条件的记录").foregroundStyle(.secondary) }
+            Section("采集记录") {
+            if rows.isEmpty {
+                Label("没有符合筛选条件的记录",systemImage:"tray").foregroundStyle(.secondary).padding(.vertical,8)
+            }
             ForEach(rows) { trial in
                 NavigationLink { RecordView(trial:trial) } label: {
                     VStack(alignment:.leading,spacing:4) {
@@ -38,6 +43,7 @@ struct RecordsView: View {
                         Text(trial.id).font(.caption2).foregroundStyle(.secondary)
                     }
                 }
+            }
             }
         }.buttonStyle(.borderless).navigationTitle("记录与导出").searchable(text:$search,prompt:"受试者编号、动作名或记录编号")
     }
@@ -97,7 +103,7 @@ struct RecordView: View {
                 if current.reviews.isEmpty { Text("没有人工修改，正常结束且质量通过时默认正常").font(.footnote) }
                 ForEach(current.reviews,id:\.revision) { row in VStack(alignment:.leading) { Text("修改\(row.revision) · \(row.decision == "accepted" ? "恢复动作合格":"标记待补录")"); Text(row.reason).font(.footnote); Text(Date(timeIntervalSince1970:Double(row.wall_ms)/1000),style:.date).font(.caption) } }
             }
-        }.buttonStyle(.borderless).navigationTitle("记录详情")
+        }.buttonStyle(.borderless).navigationTitle("记录详情").navigationBarTitleDisplayMode(.inline)
          .confirmationDialog("标记待补录",isPresented:$retry) {
             ForEach(["数据异常","动作做错","提前结束","绑带松动"],id:\.self) { reason in Button(reason) { model.retry(current,reason:reason) } }
             Button("其他原因") { reason = ""; custom = true }

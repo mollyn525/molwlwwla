@@ -10,11 +10,14 @@ struct WearingView: View {
             StatusBanner()
             Section("本次佩戴核验") {
                 Text("本页项目属于提醒，未完成也可开始正式采集。没有当前任务的有效参考时，只保存原始数据，不生成对应相对姿态。").font(.footnote).foregroundStyle(.secondary)
-                Text("1 核对设备编号、贴附点、方向和松紧\n2 保持中立站姿，双臂自然下垂、双脚平放\n3 每个部位做5秒引导动作\n4 记录人工确认")
+                DisclosureGroup("佩戴核验步骤") {
+                    Text("1 核对设备编号、贴附点、方向和松紧\n2 保持中立站姿，双臂自然下垂、双脚平放\n3 每个部位做5秒引导动作\n4 记录人工确认").font(.footnote).lineSpacing(6)
+                }
                 Button("采集15部位完整参考姿态") { referenceMode = 0 }.disabled(model.busy || model.study == nil)
                 Button("诊断：仅采集已连接的绑定部位") { referenceMode = 1 }.disabled(model.busy || model.study == nil)
                 Button("调整过佩戴，清除当前参考",role:.destructive) { invalidate = true }.disabled(model.busy)
             }
+            Section("逐部位核验") {
             ForEach(BodyRole.all) { role in
                 NavigationLink { WearRoleView(role:role) } label: {
                     VStack(alignment:.leading) {
@@ -25,6 +28,7 @@ struct WearingView: View {
                         }
                     }
                 }
+            }
             }
             Text("引导动作只提供疑似错绑线索。参考姿态是中立参考，不是解剖坐标系精度认证，不会消除航向漂移或建立设备内部同步。").font(.footnote).foregroundStyle(.secondary)
         }.buttonStyle(.borderless).navigationTitle("佩戴核验")
@@ -78,7 +82,7 @@ struct WearRoleView: View {
                 Button("已核对，保存人工确认") { model.confirmWear(role,note:note) }.disabled(model.busy || binding?.movement == nil || note.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
                 if binding?.wearConfirmed == true { Label("已保存人工确认",systemImage:"checkmark.circle.fill").foregroundStyle(.teal); Text(binding?.wearNote ?? "").font(.footnote) }
             }
-        }.buttonStyle(.borderless).navigationTitle(role.name+" · 佩戴")
+        }.buttonStyle(.borderless).navigationTitle(role.name+" · 佩戴").navigationBarTitleDisplayMode(.inline)
          .onAppear { note = binding?.wearNote ?? "" }
          .confirmationDialog("准备开始5秒引导动作",isPresented:$movementPrompt) { Button("已准备，开始5秒检查") { model.inspect(role.id) } } message: { Text(guide+"持续5秒，允许相邻肢段自然联动，其余部位尽量不动。") }
     }

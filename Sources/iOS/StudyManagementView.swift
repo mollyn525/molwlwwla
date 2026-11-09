@@ -47,7 +47,7 @@ struct StudyManagementView: View {
                 }
                 Text("彻底删除会释放关联原始记录占用的空间。已生成或分享的导出文件、共享操作日志不会随之删除。").font(.footnote).foregroundStyle(.secondary)
             }
-        }.buttonStyle(.borderless).navigationTitle("受试者管理")
+        }.buttonStyle(.borderless).navigationTitle("受试者管理").navigationBarTitleDisplayMode(.inline)
          .confirmationDialog("移入最近删除？",isPresented:$confirmTrash,titleVisibility:.visible) {
              if let deleting { Button("移入最近删除",role:.destructive) { model.trashStudy(deleting.id) } }
          } message: {

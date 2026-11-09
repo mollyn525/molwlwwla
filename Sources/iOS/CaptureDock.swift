@@ -8,10 +8,11 @@ struct CaptureDock: View {
         VStack(spacing:8) {
             if model.engineState.recording || model.engineState.saving { RecordingControls() }
             else {
-                Button(title,action:start)
+                Button(action:start) {
+                    Text(title).frame(maxWidth:.infinity,minHeight:24).multilineTextAlignment(.center)
+                }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .frame(maxWidth:.infinity)
                     .disabled(!enabled)
                     .accessibilityIdentifier(identifier)
             }

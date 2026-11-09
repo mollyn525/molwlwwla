@@ -27,7 +27,7 @@ struct SubjectCalibrationView: View {
                 } else {
                     Text("点开始，倒计时结束后完成两个深蹲，再点下方“已完成两个深蹲，结束并保存”。")
                 }
-                Text("每项独立保存，可重新采集。最近一次完成且数据质量通过后，该项显示完成。").font(.footnote).foregroundStyle(.secondary)
+                Text("每项独立保存，可重新采集。最近一次完成且数据质量通过后，该项显示完成。").font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
                 Text(model.engineState.message).font(.footnote)
             }
             if !model.calibrationPreflight.ready && !model.engineState.recording {
@@ -48,7 +48,7 @@ struct SubjectCalibrationView: View {
                     }
                 }
             }
-        }.navigationTitle("受试者校正采集")
+        }.navigationTitle("受试者校正采集").navigationBarTitleDisplayMode(.inline)
          .onAppear {
              if model.engineState.recording, let active = model.engineState.recordingCalibration { kind = active }
          }

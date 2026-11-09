@@ -6,7 +6,10 @@ import BaduanjinCore
     @Environment(\.scenePhase) private var phase
     var body: some Scene {
         WindowGroup {
-            RootView().environmentObject(model).tint(Color(red:0.03,green:0.50,blue:0.55))
+            RootView().environmentObject(model).tint(InterfaceColor.tint)
+                #if DEBUG
+                .modifier(ReviewAppearance())
+                #endif
                 .onChange(of:phase,initial:true) { _, phase in
                     switch phase {
                     case .active: model.engine.scene(.active)

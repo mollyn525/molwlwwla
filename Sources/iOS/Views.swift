@@ -2,7 +2,6 @@ import SwiftUI
 import UIKit
 import BaduanjinCore
 
-private let ink = Color(red:0.12,green:0.25,blue:0.28)
 struct RootView: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
@@ -20,40 +19,39 @@ struct RootView: View {
 struct StatusBanner: View {
     @EnvironmentObject var model: AppModel
     var body: some View { VStack(alignment:.leading,spacing:8) {
-        Text("八段锦采集 · iOS").font(.title2.bold()).foregroundStyle(ink)
-        Text(model.engineState.message).font(.subheadline)
+        Label(model.engineState.message,systemImage:model.engineState.recording ? "record.circle.fill" : "info.circle")
+            .font(.subheadline).fixedSize(horizontal:false,vertical:true)
         Text(model.engineState.freeBytes >= 0 ? String(format:"可用 %.2f GiB · 待写 %d项",Double(model.engineState.freeBytes)/1073741824,model.engineState.queuedWrites):"存储检查中").font(.caption).foregroundStyle(.secondary)
         if model.engineState.queuedWrites >= 2000 { Text("写盘积压较高，异常会保留并影响质量判定").font(.caption).foregroundStyle(.orange) }
         if model.engineState.batch { Text(model.engineState.batchMessage).foregroundStyle(.orange); Button(model.engineState.parallelCalibration ? "停止本批全部校准":"停止后续操作"){model.engine.cancelBatch()} }
         if model.engineState.movement { Button("取消本次佩戴检查"){model.engine.stopWearing()} }
         if model.exporting { ProgressView(model.exportProgress); Button("取消导出",role:.cancel){model.cancelExport()} }
-    }.frame(maxWidth:.infinity,alignment:.leading).padding(.vertical,8) }
+    }.frame(maxWidth:.infinity,alignment:.leading).padding(.vertical,4) }
 }
 struct DevicesView: View {
     @EnvironmentObject var model: AppModel
     @State private var bodyRole: Int?
     var body: some View {
         List {
-            Section {
+            Section("连接概览") {
                 HStack {
                     counter("已绑定",model.roster.count)
                     counter("已连接",model.engineState.devices.filter { $0.wanted && $0.connected }.count)
                     counter("部位就绪",BodyRole.all.compactMap { model.device($0) }.filter { color($0) == .green }.count)
                 }
-                HStack {
-                    Button("扫描设备"){model.engine.scan()}.disabled(model.busy)
-                    Spacer()
-                    Button("连接已绑定"){model.engine.connect(model.roster.values.map(\.peripheralID))}.disabled(model.busy || model.roster.isEmpty)
-                }
-                NavigationLink("实时监测 · Mag Norm / Orientation") { MonitorView() }.accessibilityIdentifier("liveMonitor")
+                ViewThatFits(in:.horizontal) {
+                    HStack(spacing:12) { connectionButtons }
+                    VStack(spacing:8) { connectionButtons }
+                }.padding(.vertical,4)
+                TaskLink("实时监测 · Mag Norm / Orientation",detail:"磁场四条曲线、姿态三轴与航向归零",symbol:"waveform.path.ecg") { MonitorView() }.accessibilityIdentifier("liveMonitor")
             }
-            Section {
-                NavigationLink("开始正式收集") { if model.study == nil { CaptureView() } else { CollectionView() } }.font(.headline)
-                BodyMapView(selectedRole:$bodyRole).frame(height:430)
+            Section("部位就绪") {
+                BodyMapView(selectedRole:$bodyRole).frame(height:400)
                 Text("正面示意 · 左右按佩戴者 · 点击部位查看或绑定").font(.caption)
             }
-            Section {
-                Text("绑定 \(model.roster.count)/15 · 连接 \(model.engineState.devices.filter(\.connected).count)/15")
+            Section("采集与连接管理") {
+                TaskLink("开始正式收集",detail:model.study?.subject ?? "先建立受试者任务",symbol:"record.circle") { if model.study == nil { CaptureView() } else { CollectionView() } }
+                Text("绑定 \(model.roster.count)/15 · 连接 \(model.engineState.devices.filter(\.connected).count)/15").font(.caption).foregroundStyle(.secondary)
                 StatusBanner()
                 Button("断开所有设备",role:.destructive){model.engine.disconnect()}.disabled(model.engineState.saving || model.engineState.batch || model.engineState.movement)
                 NavigationLink("少量设备诊断连接"){ DiagnosticPicker() }
@@ -71,8 +69,16 @@ struct DevicesView: View {
                 }
             }
             Text("部位就绪表示已连接、初始化，近期加速度和角速度均有更新且各 >40 Hz。佩戴与参考姿态见部位详情。").font(.footnote).foregroundStyle(.secondary)
-        }.buttonStyle(.borderless).navigationTitle("设备").navigationBarTitleDisplayMode(.inline)
+        }.buttonStyle(.borderless).navigationTitle("设备")
          .navigationDestination(item:$bodyRole) { index in RoleView(role:BodyRole.all[index]) }
+    }
+    private var connectionButtons: some View {
+        Group {
+            Button { model.engine.scan() } label: { Label("扫描设备",systemImage:"magnifyingglass").frame(minHeight:32) }
+                .buttonStyle(.bordered).disabled(model.busy).accessibilityLabel("扫描设备")
+            Button { model.engine.connect(model.roster.values.map(\.peripheralID)) } label: { Label("连接已绑定",systemImage:"link").frame(minHeight:32) }
+                .buttonStyle(.borderedProminent).disabled(model.busy || model.roster.isEmpty).accessibilityLabel("连接已绑定")
+        }
     }
     private func counter(_ label: String, _ count: Int) -> some View {
         VStack(alignment:.leading) { Text("\(count)/15").font(.title3.bold()).monospacedDigit(); Text(label).font(.caption).foregroundStyle(.secondary) }.frame(maxWidth:.infinity,alignment:.leading)

@@ -14,14 +14,17 @@ struct CaptureView: View {
             }
             #endif
             Section("本次采集任务") {
-                Text(model.study.map { "\($0.subject) · \(model.book.total)/120条合格" } ?? "尚未建立任务")
-                NavigationLink("受试者静态 / 动态校正") { SubjectCalibrationView() }.disabled(model.study == nil)
-                NavigationLink("开始正式收集") { CollectionView() }.disabled(model.study == nil)
+                CurrentTaskSummary()
                 Button("新建受试者任务") { showNew = true }.disabled(model.busy)
-                NavigationLink("受试者管理 / 最近删除") { StudyManagementView() }.accessibilityIdentifier("manageSubjects")
+                TaskLink("受试者管理 / 最近删除",detail:"继续历史任务、恢复或删除受试者",symbol:"person.crop.rectangle.stack") { StudyManagementView() }
+                    .accessibilityIdentifier("manageSubjects")
+            }
+            Section("采集流程") {
+                TaskLink("受试者静态 / 动态校正",detail:"N-pose 保持5秒 · 两个深蹲",symbol:"figure.stand") { SubjectCalibrationView() }.disabled(model.study == nil)
+                TaskLink("开始正式收集",detail:"八个动作任选 · 每个动作15条",symbol:"record.circle") { CollectionView() }.disabled(model.study == nil)
             }
             Section("诊断录制") {
-                Text("诊断独立保存，不占正式编号。点击即保存，3秒后标记动作开始。")
+                Text("诊断独立保存，不占正式编号。点击即保存，3秒后标记动作开始。").font(.footnote).foregroundStyle(.secondary)
                 Button("开始诊断录制（手动结束）") { model.diagnostic(seconds:0) }.disabled(model.busy)
                 Button("开始60秒诊断") { model.diagnostic(seconds:60) }.disabled(model.busy)
                 Text("下拉通知中心或控制中心时继续采集；锁屏或切到其他 App 进入后台时结束并保留本次记录。").font(.caption).foregroundStyle(.secondary)
@@ -46,8 +49,11 @@ struct RecordingControls: View {
                 Text("N-pose 保持不动，满5秒自动保存").font(.subheadline)
                 Button("提前结束并保留本次") { model.engine.stop() }.buttonStyle(.bordered).disabled(!model.engineState.recording)
             } else {
-                Button(model.engineState.recordingCalibration == .dynamicSquats ? "已完成两个深蹲，结束并保存" : "结束并保存") {
+                Button {
                     model.engine.stop(calibrationComplete:model.engineState.recordingCalibration == .dynamicSquats)
+                } label: {
+                    Text(model.engineState.recordingCalibration == .dynamicSquats ? "已完成两个深蹲，结束并保存" : "结束并保存")
+                        .frame(maxWidth:.infinity,minHeight:24).multilineTextAlignment(.center)
                 }.buttonStyle(.borderedProminent).controlSize(.large).disabled(!model.engineState.recording).accessibilityIdentifier("recordingStop")
                 if model.engineState.recordingCalibration == .dynamicSquats {
                     Button("本次未完成，结束并保留") { model.engine.stop() }
@@ -64,23 +70,40 @@ struct CollectionView: View {
     var body: some View {
         List {
             StatusBanner()
-            NavigationLink("受试者静态 / 动态校正") { SubjectCalibrationView() }.accessibilityIdentifier("subjectCalibration")
-            Text("八个动作各15条，共120个固定编号。正常结束且数据质量通过后默认正常；发现问题再标记补录。")
-            Text("导出按动作、编号和尝试分类，每次均附示例格式TXT。").font(.caption).foregroundStyle(.secondary)
-            Text("\(model.study?.subject ?? "无任务") · \(model.book.total)/120条合格").font(.headline)
+            Section("当前任务") {
+                CurrentTaskSummary()
+                TaskLink("受试者静态 / 动态校正",detail:"查看本受试者的两项采前采集",symbol:"figure.stand") { SubjectCalibrationView() }.accessibilityIdentifier("subjectCalibration")
+            }
+            Section("快速定位") {
             if let next = model.book.nextAction {
                 NavigationLink("继续正常采集") { ActionView(action:next,initialSlot:model.book.nextSlot(action:next,retry:false) ?? model.book.nextSlot(action:next,retry:true) ?? 1) }
                 NavigationLink("定位待补录") { ActionView(action:next,initialSlot:model.book.nextSlot(action:next,retry:true) ?? 1) }.disabled(model.book.nextSlot(action:next,retry:true) == nil)
             } else { Text("120条均已合格，可查看历史和分类导出").foregroundStyle(.teal) }
-            Button("编辑八个动作名称") { names = model.study?.actions ?? (1...8).map { "动作\($0)" }; edit = true }.disabled(model.busy)
+            }
+            Section("八个动作 · 可任选") {
             ForEach(0..<8,id:\.self) { a in
                 NavigationLink { ActionView(action:a) } label: {
-                    VStack(alignment:.leading) { Text(model.study?.actions[a] ?? "动作\(a+1)").font(.headline); Text(String(format:"%03d–%03d · %d/15合格",a*15+1,(a+1)*15,model.book.count(action:a))) }
+                    HStack(spacing:12) {
+                        Text(String(format:"%02d",a+1)).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary).frame(width:28)
+                        VStack(alignment:.leading,spacing:4) {
+                            Text(model.study?.actions[a] ?? "动作\(a+1)").font(.headline)
+                            Text(String(format:"%03d–%03d · %d/15合格",a*15+1,(a+1)*15,model.book.count(action:a))).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength:0)
+                    }.frame(minHeight:44).padding(.vertical,4)
                 }.accessibilityIdentifier("collectionAction\(a)")
             }
-            Button("导出当前任务全部尝试") { model.export(model.trials.filter { $0.studyID == model.study?.id && !$0.diagnostic }) }.disabled(model.busy)
-            NavigationLink("查看完整采前清单") { PreflightView() }
-        }.buttonStyle(.borderless).navigationTitle("正式收集")
+            }
+            Section("任务管理与导出") {
+                Button("编辑八个动作名称") { names = model.study?.actions ?? (1...8).map { "动作\($0)" }; edit = true }.disabled(model.busy)
+                Button("导出当前任务全部尝试") { model.export(model.trials.filter { $0.studyID == model.study?.id && !$0.diagnostic }) }.disabled(model.busy)
+                NavigationLink("查看完整采前清单") { PreflightView() }
+                DisclosureGroup("采集与导出说明") {
+                    Text("八个动作各15条，共120个固定编号。正常结束且数据质量通过后默认正常；发现问题再标记补录。").font(.footnote)
+                    Text("导出按动作、编号和尝试分类，每次均附示例格式TXT。").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }.buttonStyle(.borderless).navigationTitle("正式收集").navigationBarTitleDisplayMode(.inline)
          .safeAreaInset(edge:.bottom) {
              if model.engineState.recording || model.engineState.saving { CaptureDock(title:"",enabled:false,identifier:"collectionDock") {} }
          }
@@ -106,6 +129,7 @@ struct ActionView: View {
     var body: some View {
         List {
             StatusBanner()
+            Section("选择采集编号") {
             LazyVGrid(columns:Array(repeating:GridItem(.flexible()),count:3)) {
                 ForEach(1...15,id:\.self) { n in
                     Button { slot = n } label: {
@@ -114,6 +138,8 @@ struct ActionView: View {
                     }.disabled(model.busy).buttonStyle(.plain)
                 }
             }
+            }
+            Section("本条采集") {
             Text("第\(slot)/15条 · 下次第\((rows.last?.assignment?.slot_attempt ?? 0)+1)次尝试").font(.headline)
             Text("频率要求：每台加速度、角速度各 >40 Hz，平均值包含断流时间。").font(.caption).foregroundStyle(.secondary)
             if !startAllowed { blockedStartDetails }
@@ -128,11 +154,12 @@ struct ActionView: View {
             if model.book.count(action:action) == 15, let next = model.book.nextAction {
                 NavigationLink("本动作已完成，进入\(model.study?.actions[next] ?? "下一动作")") { ActionView(action:next) }
             }
+            }
             Section("本条所有尝试") {
                 ForEach(rows.reversed()) { trial in NavigationLink { RecordView(trial:trial) } label: { Text("尝试\(trial.assignment?.slot_attempt ?? 0) · \(trial.accepted ? "已合格":"待补录")") } }
             }
             preflightSection
-        }.buttonStyle(.borderless).navigationTitle(model.study?.actions[action] ?? "动作\(action+1)")
+        }.buttonStyle(.borderless).navigationTitle(model.study?.actions[action] ?? "动作\(action+1)").navigationBarTitleDisplayMode(.inline)
          .safeAreaInset(edge:.bottom) {
              CaptureDock(title:"开始本条采集",enabled:startAllowed,identifier:"formalStart") { model.start(action:action,slot:slot) }
          }
@@ -153,7 +180,9 @@ struct ActionView: View {
         Section("采前检查") {
             Text(model.preflight.ready ? "开始条件已满足，可采集":"还有\(model.preflight.blockers.count)项开始条件未满足")
             Text("另有\(model.preflight.reminders.count)项提醒，不阻止采集。佩戴、参考姿态与配置状态会随记录保存。").font(.footnote)
-            ForEach(model.preflight.blockers.prefix(8)) { row in VStack(alignment:.leading) { Text(row.title); Text(row.detail).font(.caption).foregroundStyle(.secondary) } }
+            DisclosureGroup("展开开始条件详情") {
+                ForEach(model.preflight.blockers.prefix(8)) { row in VStack(alignment:.leading) { Text(row.title); Text(row.detail).font(.caption).foregroundStyle(.secondary) } }
+            }
             NavigationLink("查看全部检查项与部位") { PreflightView() }
         }
     }
