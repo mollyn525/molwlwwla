@@ -40,7 +40,7 @@ struct DevicesView: View {
                     counter("部位就绪",BodyRole.all.compactMap { model.device($0) }.filter { color($0) == .green }.count)
                 }
                 AdaptiveActionRow { connectionButtons }.padding(.vertical,4)
-                TaskLink("实时监测 · Mag Norm / Orientation",detail:"磁场四条曲线、姿态三轴与航向归零",symbol:"waveform.path.ecg") { MonitorView() }.accessibilityIdentifier("liveMonitor")
+                NavigationLink("实时监测 · Mag Norm / Orientation") { MonitorView() }.accessibilityIdentifier("liveMonitor")
             }
             Section("部位就绪") {
                 BodyMapView(selectedRole:$bodyRole).frame(height:400)
@@ -66,7 +66,7 @@ struct DevicesView: View {
                 }
             }
             Text("部位就绪表示已连接、初始化，近期加速度和角速度均有更新且各 >40 Hz。佩戴与参考姿态见部位详情。").font(.footnote).foregroundStyle(.secondary)
-        }.buttonStyle(.borderless).navigationTitle("设备").navigationBarTitleDisplayMode(.large)
+        }.buttonStyle(.borderless).navigationTitle("设备").navigationBarTitleDisplayMode(.inline)
          .navigationDestination(item:$bodyRole) { index in RoleView(role:BodyRole.all[index]) }
     }
     private var connectionButtons: some View {

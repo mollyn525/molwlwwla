@@ -26,28 +26,51 @@ final class WorkflowUITests: XCTestCase {
     func testReadOnlyMonitorAndCalibrationPages() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages","(zh-Hans)","-AppleLocale","zh_CN"]
+        app.launchArguments = ["-AppleLanguages","(zh-Hans)","-AppleLocale","zh_CN","--ui-storage-id="+UUID().uuidString]
+        addUIInterruptionMonitor(withDescription:"Bluetooth prompt") { alert in
+            for title in ["允许","Allow","好","OK"] where alert.buttons[title].exists { alert.buttons[title].tap(); return true }
+            return false
+        }
+        // Reproduce the persisted-subject context of the original failing case.
         app.launch()
+        XCTAssertTrue(app.tabBars.buttons["采集"].waitForExistence(timeout:15))
+        app.tabBars.buttons["采集"].tap()
+        app.buttons["新建受试者任务"].tap()
+        let dialog = app.alerts["新建匿名受试者任务"]
+        XCTAssertTrue(dialog.waitForExistence(timeout:5))
+        dialog.textFields.firstMatch.tap(); dialog.textFields.firstMatch.typeText("S_INPUT_VERIFY")
+        dialog.buttons["建立"].tap()
+        app.terminate(); app.launch()
         let monitor = app.buttons["liveMonitor"]
         XCTAssertTrue(monitor.waitForExistence(timeout:15)); monitor.tap()
         XCTAssertTrue(app.staticTexts["Magnetic Field (a.u.)"].waitForExistence(timeout:5))
         let modes = app.segmentedControls.firstMatch
-        func selectMode(_ title: String, x: CGFloat, chart: String) {
-            let segment = modes.buttons[title]
-            XCTAssertTrue(segment.waitForExistence(timeout:5))
-            XCTAssertTrue(segment.isHittable)
-            // Touch the segment's visible region; do not rely on a global
-            // label lookup's synthesized accessibility activation.
-            modes.coordinate(withNormalizedOffset:CGVector(dx:x,dy:0.5)).tap()
-            let selected = XCTNSPredicateExpectation(predicate:NSPredicate(format:"isSelected == true"),object:segment)
+        func checkMode(_ title: String, chart: String) {
+            let selected = XCTNSPredicateExpectation(predicate:NSPredicate(format:"isSelected == true"),object:modes.buttons[title])
             XCTAssertEqual(XCTWaiter.wait(for:[selected],timeout:5),.completed)
             XCTAssertTrue(app.staticTexts[chart].waitForExistence(timeout:5))
         }
+        func selectMode(_ title: String, chart: String) {
+            let segment = modes.buttons[title]
+            XCTAssertTrue(segment.waitForExistence(timeout:5))
+            XCTAssertTrue(segment.isHittable)
+            // The iOS 26 simulator can emit the old value for XCTest's 50 ms tap.
+            // A 200 ms touch exercised the native input path successfully in the trace.
+            segment.press(forDuration:0.2)
+            checkMode(title,chart:chart)
+        }
         attach(app,"监测分段切换前 Mag Norm")
-        selectMode("Orientation",x:0.75,chart:"Orientation (°)")
+        selectMode("Orientation",chart:"Orientation (°)")
         attach(app,"监测分段切换后 Orientation")
-        selectMode("Mag Norm",x:0.25,chart:"Magnetic Field (a.u.)")
-        selectMode("Orientation",x:0.75,chart:"Orientation (°)")
+        selectMode("Mag Norm",chart:"Magnetic Field (a.u.)")
+        selectMode("Orientation",chart:"Orientation (°)")
+        modes.coordinate(withNormalizedOffset:CGVector(dx:0.75,dy:0.5))
+            .press(forDuration:0.2,thenDragTo:modes.coordinate(withNormalizedOffset:CGVector(dx:0.25,dy:0.5)))
+        checkMode("Mag Norm",chart:"Magnetic Field (a.u.)")
+        modes.coordinate(withNormalizedOffset:CGVector(dx:0.25,dy:0.5))
+            .press(forDuration:0.2,thenDragTo:modes.coordinate(withNormalizedOffset:CGVector(dx:0.75,dy:0.5)))
+        checkMode("Orientation",chart:"Orientation (°)")
+        attach(app,"原生滑动切换往返后 Orientation")
         let reset = app.buttons["Heading reset · 本台归零"]
         for _ in 0..<5 { if reset.exists { break }; app.swipeUp() }
         XCTAssertTrue(reset.exists); XCTAssertFalse(reset.isEnabled)
