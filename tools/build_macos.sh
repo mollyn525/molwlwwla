@@ -24,10 +24,14 @@ xcodebuild -project Baduanjin.xcodeproj -scheme Baduanjin -configuration Debug -
 test_bundle=$(python3 -c 'from pathlib import Path; p=list(Path("build/ui/Build/Products").glob("*.xctestrun")); assert len(p)==1,p; print(p[0])')
 # A targeted confirmation is opt-in; ordinary pushes still run every UI test.
 ui_filters=()
-if [ "${UI_CONFIRMATION:-false}" = true ]; then
+if [ "${UI_MONITOR_DIAGNOSTIC:-false}" = true ]; then
+  ui_filters+=("-only-testing:WorkflowUITests/MonitorInputDiagnostics/testNativeTouchPath")
+elif [ "${UI_CONFIRMATION:-false}" = true ]; then
   ui_filters+=("-only-testing:WorkflowUITests/WorkflowUITests/testReadOnlyMonitorAndCalibrationPages")
   ui_filters+=("-only-testing:WorkflowUITests/WorkflowUITests/testFiveTabsTaskPersistenceAndFormalGate")
   ui_filters+=("-only-testing:WorkflowUITests/UILayoutUITests/testMainPagesInLightAndAccessibleDarkAppearance")
+else
+  ui_filters+=("-skip-testing:WorkflowUITests/MonitorInputDiagnostics")
 fi
 # Run the already-built test bundle directly, avoiding a second local-package
 # graph resolution while Xcode is starting the simulator test session.

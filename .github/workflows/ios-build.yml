@@ -16,6 +16,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
       # Only an explicitly marked verification commit narrows UI test scope.
       UI_CONFIRMATION: ${{ contains(github.event.head_commit.message, '[ui-confirmation]') }}
+      UI_MONITOR_DIAGNOSTIC: ${{ contains(github.event.head_commit.message, '[monitor-diagnostic]') }}
     steps:
       - uses: actions/checkout@v4
       - name: Initialize selected Xcode for simulator services
@@ -24,17 +25,26 @@ jobs:
           mkdir -p build
           sudo xcode-select --switch "$DEVELOPER_DIR"
           xcodebuild -runFirstLaunch > build/xcode-first-launch.log 2>&1 || { tail -n 80 build/xcode-first-launch.log; exit 1; }
+      - name: Prepare focused input diagnostics
+        if: env.UI_MONITOR_DIAGNOSTIC == 'true'
+        run: |
+          python3 tools/generate_project.py
+          python3 tools/validate_source.py
       - name: Core tests and independent export verification
+        if: env.UI_MONITOR_DIAGNOSTIC != 'true'
         timeout-minutes: 6
         run: bash tools/build_macos.sh core
       - name: Compile simulator app
+        if: env.UI_MONITOR_DIAGNOSTIC != 'true'
         timeout-minutes: 8
         run: bash tools/build_macos.sh simulator
       - name: Compile unsigned iPhone app
+        if: env.UI_MONITOR_DIAGNOSTIC != 'true'
         id: device
         timeout-minutes: 6
         run: bash tools/build_macos.sh device
       - name: Unsigned app for local personal signing
+        if: env.UI_MONITOR_DIAGNOSTIC != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: baduanjin-ios-unsigned
