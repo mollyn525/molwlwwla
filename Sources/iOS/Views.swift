@@ -40,7 +40,7 @@ struct DevicesView: View {
                     counter("部位就绪",BodyRole.all.compactMap { model.device($0) }.filter { color($0) == .green }.count)
                 }
                 AdaptiveActionRow { connectionButtons }.padding(.vertical,4)
-                NavigationLink("实时监测 · Mag Norm / Orientation") { MonitorView() }.accessibilityIdentifier("liveMonitor")
+                TaskLink("实时监测 · Mag Norm / Orientation",detail:"磁场四条曲线、姿态三轴与航向归零",symbol:"waveform.path.ecg") { MonitorView() }.accessibilityIdentifier("liveMonitor")
             }
             Section("部位就绪") {
                 BodyMapView(selectedRole:$bodyRole).frame(height:400)
