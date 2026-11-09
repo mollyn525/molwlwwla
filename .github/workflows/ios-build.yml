@@ -11,9 +11,11 @@ permissions:
 jobs:
   build:
     runs-on: macos-15-intel
-    timeout-minutes: 45
+    timeout-minutes: 50
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
+      # Only an explicitly marked verification commit narrows UI test scope.
+      UI_CONFIRMATION: ${{ contains(github.event.head_commit.message, '[ui-confirmation]') }}
     steps:
       - uses: actions/checkout@v4
       - name: Initialize selected Xcode for simulator services
@@ -40,8 +42,20 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Run simulator workflow tests
-        timeout-minutes: 30
+        timeout-minutes: 35
         run: bash tools/build_macos.sh ui
+      - name: Recover simulator reports after an interrupted test command
+        if: always()
+        timeout-minutes: 3
+        run: |
+          if [ -d build/ui-tests.xcresult ]; then
+            if [ ! -s build/ui-test-summary.json ]; then
+              xcrun xcresulttool get test-results summary --path build/ui-tests.xcresult > build/ui-test-summary.json
+            fi
+            if [ ! -s build/ui-screenshots/manifest.json ]; then
+              xcrun xcresulttool export attachments --path build/ui-tests.xcresult --output-path build/ui-screenshots
+            fi
+          fi
       - name: Preserve build logs
         if: always()
         uses: actions/upload-artifact@v4

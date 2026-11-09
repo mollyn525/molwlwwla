@@ -24,13 +24,30 @@ final class WorkflowUITests: XCTestCase {
         app.terminate()
     }
     func testReadOnlyMonitorAndCalibrationPages() {
+        continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages","(zh-Hans)","-AppleLocale","zh_CN"]
         app.launch()
         let monitor = app.buttons["liveMonitor"]
         XCTAssertTrue(monitor.waitForExistence(timeout:15)); monitor.tap()
         XCTAssertTrue(app.staticTexts["Magnetic Field (a.u.)"].waitForExistence(timeout:5))
-        app.buttons["Orientation"].tap()
+        let modes = app.segmentedControls.firstMatch
+        func selectMode(_ title: String, x: CGFloat, chart: String) {
+            let segment = modes.buttons[title]
+            XCTAssertTrue(segment.waitForExistence(timeout:5))
+            XCTAssertTrue(segment.isHittable)
+            // Touch the segment's visible region; do not rely on a global
+            // label lookup's synthesized accessibility activation.
+            modes.coordinate(withNormalizedOffset:CGVector(dx:x,dy:0.5)).tap()
+            let selected = XCTNSPredicateExpectation(predicate:NSPredicate(format:"isSelected == true"),object:segment)
+            XCTAssertEqual(XCTWaiter.wait(for:[selected],timeout:5),.completed)
+            XCTAssertTrue(app.staticTexts[chart].waitForExistence(timeout:5))
+        }
+        attach(app,"监测分段切换前 Mag Norm")
+        selectMode("Orientation",x:0.75,chart:"Orientation (°)")
+        attach(app,"监测分段切换后 Orientation")
+        selectMode("Mag Norm",x:0.25,chart:"Magnetic Field (a.u.)")
+        selectMode("Orientation",x:0.75,chart:"Orientation (°)")
         let reset = app.buttons["Heading reset · 本台归零"]
         for _ in 0..<5 { if reset.exists { break }; app.swipeUp() }
         XCTAssertTrue(reset.exists); XCTAssertFalse(reset.isEnabled)
