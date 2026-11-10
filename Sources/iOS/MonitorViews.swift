@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import BaduanjinCore
 
 private let traceColors: [Color] = [
@@ -69,15 +70,35 @@ private struct SensorAxes: View {
     }
 }
 
-/// Keep the native segment's interaction independent of 4 Hz telemetry refreshes.
-/// The immutable value makes equality compare the previous and next selection;
-/// the Binding still carries user changes back to MonitorView.
-private struct MonitorModePicker: View, Equatable {
+/// Retain the system segmented control and its native sliding interaction.
+/// Telemetry refreshes must not reapply the previous selection during a touch.
+private struct MonitorModePicker: UIViewRepresentable {
     @Binding var mode: Int
-    let value: Int
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.value == rhs.value }
-    var body: some View {
-        Picker("监测项目",selection:$mode) { Text("Mag Norm").tag(0); Text("Orientation").tag(1) }.pickerStyle(.segmented)
+    final class Coordinator: NSObject {
+        var binding: Binding<Int>
+        var appliedMode: Int
+        init(_ binding: Binding<Int>) { self.binding = binding; appliedMode = binding.wrappedValue }
+        @objc func changed(_ sender: UISegmentedControl) {
+            guard sender.selectedSegmentIndex >= 0 else { return }
+            appliedMode = sender.selectedSegmentIndex
+            binding.wrappedValue = appliedMode
+        }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator($mode) }
+    func makeUIView(context: Context) -> UISegmentedControl {
+        let control = UISegmentedControl(items:["Mag Norm","Orientation"])
+        control.accessibilityLabel = "监测项目"
+        control.selectedSegmentIndex = mode
+        control.addTarget(context.coordinator,action:#selector(Coordinator.changed(_:)),for:.valueChanged)
+        control.setContentHuggingPriority(.defaultLow,for:.horizontal)
+        return control
+    }
+    func updateUIView(_ control: UISegmentedControl, context: Context) {
+        context.coordinator.binding = $mode
+        // Compare committed model values, not the control's in-progress tracking value.
+        guard context.coordinator.appliedMode != mode else { return }
+        context.coordinator.appliedMode = mode
+        if control.selectedSegmentIndex != mode { control.selectedSegmentIndex = mode }
     }
 }
 
@@ -102,7 +123,7 @@ struct MonitorView: View {
             if model.engineState.headingPending { Label("已确认放稳，请保持当前姿态约 3 秒",systemImage:"timer").foregroundStyle(.orange) }
             Section {
                 Picker("设备",selection:$selection) { Text("选择设备").tag(""); ForEach(devices) { Text(model.monitorLabel($0)).tag($0.id) } }
-                MonitorModePicker(mode:$mode,value:mode).equatable()
+                MonitorModePicker(mode:$mode).frame(maxWidth:.infinity)
             }
             if mode == 0 {
                 Section {
