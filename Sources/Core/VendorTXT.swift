@@ -37,14 +37,18 @@ public enum VendorTXT {
     private static func lines(_ file: URL, cancel: ExportCancellation, visit: (String) throws -> Void) throws {
         let input = try FileHandle(forReadingFrom:file); defer { try? input.close() }
         var pending = Data()
-        while let chunk = try input.read(upToCount:64*1024), !chunk.isEmpty {
+        // Includes per-row DateFormatter/String(format:) temporaries in the pool.
+        // Output buffers and per-device state intentionally survive each chunk.
+        while try autoreleasepool(invoking: { () throws -> Bool in
+            guard let chunk = try input.read(upToCount:64*1024), !chunk.isEmpty else { return false }
             try cancel.check(); pending.append(chunk)
             while let end = pending.firstIndex(of:10) {
                 guard let text = String(data:pending[..<end],encoding:.utf8) else { throw LabError.invalid("TXT来源CSV含无效UTF-8") }
                 try visit(text.hasSuffix("\r") ? String(text.dropLast()):text); pending.removeSubrange(...end)
             }
             guard pending.count < 1024*1024 else { throw LabError.invalid("TXT来源CSV单行异常过长") }
-        }
+            return true
+        }) {}
         if !pending.isEmpty {
             guard let text = String(data:pending,encoding:.utf8) else { throw LabError.invalid("TXT来源CSV尾行编码无效") }; try visit(text)
         }

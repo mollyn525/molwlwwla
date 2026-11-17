@@ -113,7 +113,10 @@ final class CoreTests: XCTestCase {
         let artifacts = ProcessInfo.processInfo.environment["IMU_TEST_ARTIFACT_DIR"].map {URL(fileURLWithPath:$0)} ?? base.appendingPathComponent("artifacts")
         try FileManager.default.createDirectory(at:artifacts,withIntermediateDirectories:true)
         let zip = artifacts.appendingPathComponent("diagnostic-export.zip")
-        try ArchiveExporter.export(sessions:files.sessions,trials:files.trials,destination:zip,cancel:ExportCancellation()){_,_ in}
+        let journal = base.appendingPathComponent("operations.jsonl"), auditBytes = Data(String(repeating:"{\"synthetic\":true}\n",count:20000).utf8)
+        try auditBytes.write(to:journal)
+        try ArchiveExporter.export(sessions:files.sessions,trials:files.trials,destination:zip,cancel:ExportCancellation(),fileAttachments:["operations.jsonl":journal]){_,_ in}
+        XCTAssertEqual(try Data(contentsOf:journal),auditBytes)
         XCTAssertGreaterThan(try Data(contentsOf:zip).count,100)
         let cancellation = ExportCancellation();cancellation.cancel()
         XCTAssertThrowsError(try ArchiveExporter.export(sessions:files.sessions,trials:files.trials,destination:base.appendingPathComponent("cancelled.zip"),cancel:cancellation){_,_ in})

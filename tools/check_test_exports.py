@@ -13,7 +13,9 @@ for path in paths:
             raw=z.read(e['path']);assert len(raw)==e['bytes'] and hashlib.sha256(raw).hexdigest()==e['sha256']
         checklist=json.loads(z.read('export-checklist.json'));assert checklist['complete']
         rows=json.loads(z.read('collection-index.json'))['records'];assert rows
-        if path.name=='diagnostic-export.zip':assert not any(r['counted_for_slot'] for r in rows)
+        if path.name=='diagnostic-export.zip':
+            assert not any(r['counted_for_slot'] for r in rows)
+            assert z.read('operations.jsonl')==b'{"synthetic":true}\n'*20000
         if path.name=='subject-calibration-export.zip':
             assert len(rows)==1 and not rows[0]['counted_for_slot'] and not rows[0]['diagnostic']
             record=rows[0]; calibration=record['subject_calibration']

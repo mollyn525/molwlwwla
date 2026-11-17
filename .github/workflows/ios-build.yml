@@ -17,6 +17,7 @@ jobs:
       # Only an explicitly marked verification commit narrows UI test scope.
       UI_CONFIRMATION: ${{ contains(github.event.head_commit.message, '[ui-confirmation]') }}
       UI_MONITOR_CONFIRMATION: ${{ contains(github.event.head_commit.message, '[monitor-confirmation]') }}
+      UI_EXPORT_CONFIRMATION: ${{ contains(github.event.head_commit.message, '[export-confirmation]') }}
     steps:
       - uses: actions/checkout@v4
       - name: Initialize selected Xcode for simulator services
@@ -31,6 +32,9 @@ jobs:
       - name: Compile simulator app
         timeout-minutes: 8
         run: bash tools/build_macos.sh simulator
+      - name: Measure export memory and verify large synthetic archive
+        timeout-minutes: 12
+        run: python3 tools/export_benchmark.py
       - name: Compile unsigned iPhone app
         id: device
         timeout-minutes: 6
@@ -69,4 +73,6 @@ jobs:
             build/*.xml
             build/test-artifacts/
             build/ui-screenshots/
+            build/export-benchmark/*.txt
+            build/export-benchmark/*.log
           retention-days: 7

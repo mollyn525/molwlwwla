@@ -30,7 +30,13 @@ public final class StoredZIP {
     public func add(name: String, file: URL) throws -> [String: Any] {
         try add(name: name, source: { consume in
             let input = try FileHandle(forReadingFrom: file); defer { try? input.close() }
-            while let chunk = try input.read(upToCount: 256*1024), !chunk.isEmpty { try consume(chunk) }
+            // A GCD export can run for minutes. Drain bridged Foundation buffers
+            // per chunk, rather than retaining them until the entire job returns.
+            while try autoreleasepool(invoking: { () throws -> Bool in
+                try cancellation.check()
+                guard let chunk = try input.read(upToCount:256*1024), !chunk.isEmpty else { return false }
+                try consume(chunk); return true
+            }) {}
         })
     }
     private func add(name: String, source: (_ consume: (Data) throws -> Void) throws -> Void) throws -> [String: Any] {
@@ -59,11 +65,12 @@ public final class StoredZIP {
 }
 public enum ArchiveExporter {
     public static let required = ["metadata.json","notifications.jsonl","samples.csv","relative_pose.csv","events.jsonl","summary.json"]
-    public static func export(sessions: URL, trials: [Trial], destination: URL, cancel: ExportCancellation, allTrials: [Trial]? = nil, attachments: [String:Data] = [:], progress: @escaping (Int, Int) -> Void) throws {
+    public static func export(sessions: URL, trials: [Trial], destination: URL, cancel: ExportCancellation, allTrials: [Trial]? = nil, attachments: [String:Data] = [:], fileAttachments: [String:URL] = [:], progress: @escaping (Int, Int) -> Void) throws {
         guard !trials.isEmpty else { throw LabError.invalid("没有可导出的记录") }
         let zip = try StoredZIP(url: destination, cancellation: cancel), context = allTrials ?? trials
         var manifest: [[String: Any]] = [], records: [[String: Any]] = []; var issues = 0
         for (index, trial) in trials.enumerated() {
+            try autoreleasepool {
             try cancel.check()
             guard trial.id.range(of: "^[A-Za-z0-9-]+$", options: .regularExpression) != nil else { throw LabError.invalid("记录目录无效") }
             let folder = sessions.appendingPathComponent(trial.id), prefix: String
@@ -105,10 +112,15 @@ public enum ArchiveExporter {
                 row["counted_for_slot"] = complete && trial.accepted && latest?.id == trial.id && book.accepted(action:a.action,slot:a.slot)
             }
             records.append(row); progress(index+1, trials.count)
+            }
         }
         for name in attachments.keys.sorted() {
             guard ["roster-at-export.json","studies-at-export.json","operations.jsonl"].contains(name), let data = attachments[name] else { throw LabError.invalid("导出附件不在白名单") }
             manifest.append(try zip.add(name:name,data:data))
+        }
+        for name in fileAttachments.keys.sorted() {
+            guard name == "operations.jsonl", attachments[name] == nil, let file = fileAttachments[name] else { throw LabError.invalid("导出文件附件不在白名单或重复") }
+            manifest.append(try zip.add(name:name,file:file))
         }
         manifest.append(try zip.add(name: "collection-index.json", data: JSONFile.bytes(["records":records])))
         manifest.append(try zip.add(name: "export-checklist.json", data: JSONFile.bytes(["complete":issues == 0,"issue_count":issues,"records":records,"scope":"文件完整性不等于测量有效性"])))

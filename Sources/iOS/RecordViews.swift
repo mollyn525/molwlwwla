@@ -26,6 +26,7 @@ struct RecordsView: View {
                 Picker("结果",selection:$quality) { Text("全部").tag(0); Text("质量未通过").tag(1); Text("待补录").tag(2); Text("已合格").tag(3) }
             }
             Section("导出 · \(rows.count)条符合筛选") {
+                NavigationLink { ExportFilesView() } label: { Label("已导出文件",systemImage:"archivebox") }.accessibilityIdentifier("exportFiles")
                 Button("导出当前任务全部尝试") { model.export(model.trials.filter { $0.studyID == model.study?.id && !$0.diagnostic }) }.disabled(model.busy || model.study == nil)
                 Button("导出筛选后的\(rows.count)条记录") { model.export(rows) }.disabled(model.busy || rows.isEmpty)
                 Button("刷新记录") { model.reload() }.disabled(model.busy)

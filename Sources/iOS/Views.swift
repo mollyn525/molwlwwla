@@ -167,6 +167,10 @@ struct TrendView: View {
 }
 struct ShareSheet:UIViewControllerRepresentable {
     let url:URL
-    func makeUIViewController(context:Context)->UIActivityViewController{UIActivityViewController(activityItems:[url],applicationActivities:nil)}
+    func makeUIViewController(context:Context)->UIActivityViewController {
+        let controller = UIActivityViewController(activityItems:[url],applicationActivities:nil)
+        controller.view.accessibilityIdentifier = "exportShareSheet"
+        return controller
+    }
     func updateUIViewController(_ uiViewController:UIActivityViewController,context:Context){}
 }

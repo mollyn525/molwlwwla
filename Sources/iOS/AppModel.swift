@@ -80,6 +80,7 @@ import BaduanjinCore
             do { try files.saveMovement(report,peripheralID:id,referenceID:reference); self.reload() } catch { self.error = error.localizedDescription }
         }
         #if DEBUG
+        do { try prepareExportUIFixture() } catch { self.error = error.localizedDescription }
         if ProcessInfo.processInfo.arguments.contains("--recording-dock-ui-fixture") {
             study = try? Study(subject:"UI_FIXTURE",at:1)
         }
@@ -183,21 +184,30 @@ import BaduanjinCore
         exporting = true; exportProgress = "准备导出…"
         let cancellation = ExportCancellation(); self.cancellation = cancellation
         let staged = files.root.appendingPathComponent("exports/\(UUID().uuidString).partial.zip")
-        let destination = files.root.appendingPathComponent("exports/八段锦-\(BluetoothEngine.wall()).zip")
+        let destination = files.root.appendingPathComponent("exports/八段锦-\(BluetoothEngine.wall())-\(UUID().uuidString.prefix(8)).zip")
         let sessions = files.sessions, allTrials = trials
+        let operations = files.root.appendingPathComponent("operations.jsonl")
         var attachments: [String:Data] = [:]
         do {
             attachments["roster-at-export.json"] = try JSONEncoder().encode(roster)
             attachments["studies-at-export.json"] = try JSONEncoder().encode(studies)
-            let operations = files.root.appendingPathComponent("operations.jsonl")
-            if FileManager.default.fileExists(atPath:operations.path) { attachments["operations.jsonl"] = try Data(contentsOf:operations) }
-        } catch { exporting = false; self.error = error.localizedDescription; return }
+        } catch { exporting = false; self.cancellation = nil; self.error = error.localizedDescription; return }
         let exportAttachments = attachments
         DispatchQueue.global(qos:.utility).async {
             do {
-                try ArchiveExporter.export(sessions:sessions,trials:rows,destination:staged,cancel:cancellation,allTrials:allTrials,attachments:exportAttachments) { done,total in DispatchQueue.main.async { self.exportProgress = "已整理 \(done)/\(total) 条" } }
+                // Snapshot the journal on the worker, then stream it into ZIP.
+                // Only this operation's temporary snapshot is removed afterward.
+                let work = staged.deletingLastPathComponent().appendingPathComponent("audit-work-"+UUID().uuidString,isDirectory:true)
+                try FileManager.default.createDirectory(at:work,withIntermediateDirectories:false)
+                defer { try? FileManager.default.removeItem(at:work) }
+                var fileAttachments: [String:URL] = [:]
+                if FileManager.default.fileExists(atPath:operations.path) {
+                    let snapshot = work.appendingPathComponent("operations.jsonl")
+                    try FileManager.default.copyItem(at:operations,to:snapshot); fileAttachments["operations.jsonl"] = snapshot
+                }
+                try ArchiveExporter.export(sessions:sessions,trials:rows,destination:staged,cancel:cancellation,allTrials:allTrials,attachments:exportAttachments,fileAttachments:fileAttachments) { done,total in DispatchQueue.main.async { self.exportProgress = "已整理 \(done)/\(total) 条" } }
                 try cancellation.check(); try FileManager.default.moveItem(at:staged,to:destination)
-                DispatchQueue.main.async { self.exporting = false; self.shareURL = destination; self.exportProgress = "导出完成，附SHA-256文件清单"; self.cancellation = nil }
+                DispatchQueue.main.async { self.exporting = false; self.shareURL = destination; self.exportProgress = "已保存至记录 → 已导出文件，附SHA-256文件清单"; self.cancellation = nil }
             } catch { DispatchQueue.main.async { self.exporting = false; self.error = error.localizedDescription; self.cancellation = nil; self.exportProgress = "导出未完成，原记录保留" } }
         }
     }
