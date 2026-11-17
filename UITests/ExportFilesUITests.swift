@@ -57,7 +57,7 @@ final class ExportFilesUITests: XCTestCase {
         let app = openHistory()
         let remove = app.buttons["deleteExport-"+complete]; reveal(remove,in:app); remove.tap()
         let dialog = app.alerts["删除打包文件？"]
-        XCTAssertTrue(dialog.waitForExistence(timeout:5)); XCTAssertTrue(dialog.staticTexts.containing(NSPredicate(format:"label CONTAINS %@","原始采集")).firstMatch.exists)
+        XCTAssertTrue(dialog.waitForExistence(timeout:5)); XCTAssertTrue(dialog.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","原始采集")).firstMatch.exists)
         dialog.buttons["取消"].tap(); XCTAssertTrue(remove.exists)
         remove.tap(); dialog.buttons["删除此文件"].tap()
         XCTAssertFalse(app.buttons["shareExport-"+complete].exists)
