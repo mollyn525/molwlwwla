@@ -20,14 +20,17 @@ final class ExportFilesUITests: XCTestCase {
             for _ in 0..<4 { if element.isHittable { return }; app.swipeUp() }
         }
         let share = app.buttons["shareExport-"+complete]; reveal(share); XCTAssertTrue(share.isHittable); share.tap()
-        XCTAssertTrue(app.otherElements["exportShareSheet"].waitForExistence(timeout:5) || app.buttons["拷贝"].exists || app.buttons["Copy"].exists)
+        // iOS 26 replaces the activity controller's root and exposes actions as
+        // cells. Verify the actual system container observed in its AX snapshot.
+        XCTAssertTrue(app.otherElements["ActivityListView"].waitForExistence(timeout:10))
+        XCTAssertTrue(app.cells["拷贝"].exists || app.cells["Copy"].exists)
         // Dismiss the system sheet using its native downward gesture.
         let close = app.buttons.matching(NSPredicate(format:"label == '关闭' OR label == 'Close'")).firstMatch
         if close.exists { close.tap() }
         else { app.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.1)).press(forDuration:0.1,thenDragTo:app.coordinate(withNormalizedOffset:CGVector(dx:0.5,dy:0.95))) }
         let save = app.buttons["saveExport-"+complete]; reveal(save); XCTAssertTrue(save.isHittable); save.tap()
-        let cancel = app.buttons["取消"].firstMatch
-        XCTAssertTrue(cancel.waitForExistence(timeout:5)); cancel.tap()
+        let cancel = app.buttons.matching(NSPredicate(format:"label == '取消' OR label == 'Cancel'")).firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout:10)); cancel.tap()
         let remove = app.buttons["deleteExport-"+complete]; reveal(remove); remove.tap()
         let dialog = app.alerts["删除打包文件？"]
         XCTAssertTrue(dialog.waitForExistence(timeout:5)); XCTAssertTrue(dialog.staticTexts.containing(NSPredicate(format:"label CONTAINS %@","原始采集")).firstMatch.exists)
