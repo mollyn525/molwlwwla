@@ -103,6 +103,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
       UI_EXPORT_CONFIRMATION: "true"
+      UI_EXPORT_SAVE_ONLY: ${{ contains(github.event.head_commit.message, '[export-save-only]') }}
     steps:
       - uses: actions/checkout@v4
       - name: Initialize selected Xcode

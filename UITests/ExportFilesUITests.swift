@@ -47,8 +47,13 @@ final class ExportFilesUITests: XCTestCase {
     func testSaveCopyPickerCancellationPreservesExport() {
         let app = openHistory()
         let save = app.buttons["saveExport-"+complete]; reveal(save,in:app); save.tap()
-        let cancel = app.buttons.matching(NSPredicate(format:"label == '取消' OR label == 'Cancel'")).firstMatch
+        // iOS 26 exposes the document picker's cancel control as Other.
+        let picker = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"]
+        XCTAssertTrue(picker.waitForExistence(timeout:10))
+        let cancel = app.descendants(matching:.any).matching(NSPredicate(format:"label == '取消' OR label == 'Cancel'")).firstMatch
         XCTAssertTrue(cancel.waitForExistence(timeout:10)); cancel.tap()
+        let dismissed = XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:picker)
+        XCTAssertEqual(XCTWaiter.wait(for:[dismissed],timeout:10),.completed)
         XCTAssertTrue(app.navigationBars["已导出文件"].waitForExistence(timeout:5))
         XCTAssertTrue(app.buttons["shareExport-"+complete].exists)
         app.terminate()

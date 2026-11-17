@@ -24,7 +24,9 @@ xcodebuild -project Baduanjin.xcodeproj -scheme Baduanjin -configuration Debug -
 test_bundle=$(python3 -c 'from pathlib import Path; p=list(Path("build/ui/Build/Products").glob("*.xctestrun")); assert len(p)==1,p; print(p[0])')
 # A targeted confirmation is opt-in; ordinary pushes still run every UI test.
 ui_filters=()
-if [ "${UI_EXPORT_CONFIRMATION:-false}" = true ]; then
+if [ "${UI_EXPORT_SAVE_ONLY:-false}" = true ]; then
+  ui_filters+=("-only-testing:WorkflowUITests/ExportFilesUITests/testSaveCopyPickerCancellationPreservesExport")
+elif [ "${UI_EXPORT_CONFIRMATION:-false}" = true ]; then
   ui_filters+=("-only-testing:WorkflowUITests/ExportFilesUITests")
 elif [ "${UI_MONITOR_CONFIRMATION:-false}" = true ]; then
   ui_filters+=("-only-testing:WorkflowUITests/WorkflowUITests/testReadOnlyMonitorAndCalibrationPages")
