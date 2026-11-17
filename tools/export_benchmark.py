@@ -9,9 +9,11 @@ paths=subprocess.check_output(['git','ls-tree','-r','--name-only',baseline,'Sour
 for name in paths:
     (old/Path(name).name).write_bytes(subprocess.check_output(['git','show',baseline+':'+name]))
 for name,folder in [('baseline',old),('fixed',root/'Sources/Core')]:
-    subprocess.run(['xcrun','swiftc','-O','-module-name','BaduanjinCore',*map(str,folder.glob('*.swift')),str(root/'tools/ExportBenchmark/main.swift'),'-o',str(out/(name+'-run'))],check=True)
+    print('Compiling '+name,flush=True)
+    subprocess.run(['xcrun','swiftc','-O','-whole-module-optimization','-module-name','BaduanjinCore',*map(str,folder.glob('*.swift')),str(root/'tools/ExportBenchmark/main.swift'),'-o',str(out/(name+'-run'))],check=True,timeout=180)
 results={}
-for case,binary,records,rows,padding in [('baseline-small','baseline',8,25000,0),('fixed-small','fixed',8,25000,0),('fixed-large','fixed',40,25000,32)]:
+for case,binary,records,rows,padding in [('baseline-small','baseline',2,25000,0),('fixed-small','fixed',2,25000,0),('fixed-large','fixed',40,1000,40)]:
+    print('Running '+case,flush=True)
     folder=out/case
     with (out/(case+'.log')).open('w') as stdout,(out/(case+'-memory.txt')).open('w') as stderr:
         subprocess.run(['/usr/bin/time','-l',str(out/(binary+'-run')),str(folder),str(records),str(rows),str(padding)],stdout=stdout,stderr=stderr,check=True,timeout=360)
@@ -32,6 +34,11 @@ for case,binary,records,rows,padding in [('baseline-small','baseline',8,25000,0)
         report['independent_zip_crc_sha_verified']=True
         report['manifest']={i['path']:(i['bytes'],i['sha256']) for i in manifest['files']}
     results[case]=report
+    if case=='fixed-small':
+        assert results['baseline-small']['manifest']==report['manifest'],'Export bytes changed'
+    checkpoint={name:{k:v for k,v in row.items() if k!='manifest'} for name,row in results.items()}
+    (root/'build/export-memory-progress.json').write_text(json.dumps(checkpoint,indent=2))
+    print(json.dumps(checkpoint[case]),flush=True)
     # Only synthetic benchmark intermediates under this newly created directory.
     shutil.rmtree(folder)
 assert results['baseline-small']['manifest']==results['fixed-small']['manifest'],'Export bytes changed'
